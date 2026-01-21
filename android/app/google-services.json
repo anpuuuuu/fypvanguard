@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "72494482660",
+    "project_id": "vanguard-7ad09",
+    "storage_bucket": "vanguard-7ad09.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:72494482660:android:79a63fba0806bc39fa98f1",
+        "android_client_info": {
+          "package_name": "com.example.vanguard"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc_llVfQtCPmgIPJiUuewxwyGUT7MYBiI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:72494482660:android:e4a7fdcce83256ebfa98f1",
+        "android_client_info": {
+          "package_name": "com.example.vanguardfyp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc_llVfQtCPmgIPJiUuewxwyGUT7MYBiI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
