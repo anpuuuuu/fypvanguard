@@ -27,6 +27,7 @@ class _FacilityManagementPageState extends State<FacilityManagementPage> {
     String? initialImage,
     int? initialStartHour,
     int? initialEndHour,
+    int? initialMaxSlots,
     bool initialActive = true,
   }) async {
     final isNew = docId == null;
@@ -36,6 +37,7 @@ class _FacilityManagementPageState extends State<FacilityManagementPage> {
     String? base64Image = initialImage;
     int startHour = initialStartHour ?? 8;
     int endHour = initialEndHour ?? 18;
+    int maxSlots = initialMaxSlots ?? 10;
     bool isActive = initialActive;
     bool _saving = false;
 
@@ -141,6 +143,32 @@ class _FacilityManagementPageState extends State<FacilityManagementPage> {
                 ]),
                 const SizedBox(height: 16),
 
+                // Max Slots
+                TextFormField(
+                  initialValue: maxSlots.toString(),
+                  decoration: InputDecoration(
+                    labelText: 'Max Slots (per time period)',
+                    border: OutlineInputBorder(),
+                    helperText: 'How many bookings allowed at the same time',
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    final n = int.tryParse(v);
+                    if (n == null || n < 1) return 'Must be at least 1';
+                    return null;
+                  },
+                  onChanged: _saving
+                      ? null
+                      : (v) {
+                          final n = int.tryParse(v);
+                          if (n != null && n > 0) {
+                            setState(() => maxSlots = n);
+                          }
+                        },
+                ),
+                const SizedBox(height: 16),
+
                 // Active switch
                 SwitchListTile(
                   title:
@@ -178,14 +206,15 @@ class _FacilityManagementPageState extends State<FacilityManagementPage> {
                 setState(() => _saving = true);
 
                 try {
-                  final data = {
-                    'name': nameCtrl.text.trim(),
-                    'imageBase64': base64Image,
-                    'startHour': startHour,
-                    'endHour': endHour,
-                    'active': isActive,
-                    'updatedAt': FieldValue.serverTimestamp(),
-                  };
+                                  final data = {
+                                    'name': nameCtrl.text.trim(),
+                                    'imageBase64': base64Image,
+                                    'startHour': startHour,
+                                    'endHour': endHour,
+                                    'maxSlots': maxSlots,
+                                    'active': isActive,
+                                    'updatedAt': FieldValue.serverTimestamp(),
+                                  };
                   if (isNew) {
                     data['createdAt'] =
                         FieldValue.serverTimestamp();
@@ -291,6 +320,7 @@ class _FacilityManagementPageState extends State<FacilityManagementPage> {
               final name = data['name'] as String? ?? '';
               final start = data['startHour'] as int? ?? 0;
               final end = data['endHour'] as int? ?? start + 1;
+              final slots = data['maxSlots'] as int? ?? 1;
               final active = data['active'] as bool? ?? true;
               final img64 = data['imageBase64'] as String?;
               return Card(
@@ -309,9 +339,8 @@ class _FacilityManagementPageState extends State<FacilityManagementPage> {
                       style: GoogleFonts.montserrat(
                           fontWeight: FontWeight.w600)),
                   subtitle: Text(
-                      'Opens: ${start.toString().padLeft(2,'0')}:00  '
-                          'Closes: ${end.toString().padLeft(2,'0')}:00\n'
-                          'Status: ${active ? 'Active' : 'Inactive'}',
+                      'Hours: ${start.toString().padLeft(2,'0')}:00 - ${end.toString().padLeft(2,'0')}:00\n'
+                          'Slots: $slots  •  ${active ? 'Active' : 'Inactive'}',
                       style: GoogleFonts.montserrat()),
                   isThreeLine: true,
                   trailing: Wrap(
@@ -325,6 +354,7 @@ class _FacilityManagementPageState extends State<FacilityManagementPage> {
                           initialImage: img64,
                           initialStartHour: start,
                           initialEndHour: end,
+                          initialMaxSlots: slots,
                           initialActive: active,
                         ),
                       ),
