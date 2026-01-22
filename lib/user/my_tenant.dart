@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:vanguard/user/tenant_detail.dart';
+import 'package:vanguardfyp/user/tenant_detail.dart';
 import 'RegisterVisitorForm.dart';
 
 class MyTenantPage extends StatefulWidget {

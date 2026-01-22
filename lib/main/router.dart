@@ -3,10 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:vanguard/main/pending_approval.dart';
-import 'package:vanguard/main/register_page.dart';
-import 'package:vanguard/main/reupload_proof.dart';
-import 'package:vanguard/main/role_loader.dart';
+import 'package:vanguardfyp/main/pending_approval.dart';
+import 'package:vanguardfyp/main/register_page.dart';
+import 'package:vanguardfyp/main/reupload_proof.dart';
+import 'package:vanguardfyp/main/role_loader.dart';
 
 // user screens
 import '../admin/admin_feedback_inbox.dart';

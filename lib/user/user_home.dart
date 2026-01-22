@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:vanguard/services/string_extensions.dart';
+import 'package:vanguardfyp/services/string_extensions.dart';
 import 'RegisterVisitorForm.dart';
 
 class UserHome extends StatefulWidget {

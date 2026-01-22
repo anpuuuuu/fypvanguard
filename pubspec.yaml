@@ -24,7 +24,6 @@ dependencies:
   google_mlkit_text_recognition: ^0.14.0
   path_provider: ^2.1.2
 
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -33,7 +32,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/logo.jpg
 
 
