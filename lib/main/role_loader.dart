@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:vanguardfyp/services/lease_service.dart';
 import 'router.dart'; // for fetchUserRole
 
 class RoleLoader extends StatefulWidget {
@@ -12,6 +13,8 @@ class RoleLoader extends StatefulWidget {
 }
 
 class _RoleLoaderState extends State<RoleLoader> {
+  final LeaseService _leaseService = LeaseService();
+
   @override
   void initState() {
     super.initState();
@@ -31,6 +34,7 @@ class _RoleLoaderState extends State<RoleLoader> {
     final role   = data['role']   as String;
     final status = data['status'] as String? ?? 'pending';
 
+    // 检查账户是否被停用
     if (status == 'inactive') {
       context.go('/user/removed');
       return;
@@ -38,14 +42,24 @@ class _RoleLoaderState extends State<RoleLoader> {
 
     if (role == 'owner') {
       if (status == 'pending') {
-        context.go('/user/pendingApproval');      // ← show a “pending” info screen
+        context.go('/user/pendingApproval');      // ← show a "pending" info screen
       } else if (status == 'rejected') {
         context.go('/user/reuploadProof');        // ← route back to profile to re-upload
       } else {
         context.go('/user');                      // ← fully approved
       }
     } else if (role == 'tenant') {
-      context.go('/user');
+      // ===== 租户租约检查 =====
+      // 检查并更新租约状态
+      final leaseStatus = await _leaseService.checkAndUpdateLeaseStatus(user.uid);
+      
+      if (leaseStatus == LeaseStatus.expired) {
+        // 租约已过期，跳转到过期页面
+        context.go('/user/leaseExpired');
+      } else {
+        // 租约正常或即将过期，允许登录
+        context.go('/user');
+      }
     } else if (role == 'security') {
       context.go('/security');
     } else if (role == 'admin') {

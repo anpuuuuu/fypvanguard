@@ -7,6 +7,7 @@ import 'package:vanguardfyp/main/pending_approval.dart';
 import 'package:vanguardfyp/main/register_page.dart';
 import 'package:vanguardfyp/main/reupload_proof.dart';
 import 'package:vanguardfyp/main/role_loader.dart';
+import 'package:vanguardfyp/main/lease_expired.dart';
 
 // user screens
 import '../admin/admin_feedback_inbox.dart';
@@ -87,6 +88,7 @@ final appRouter = GoRouter(
   },
   routes: [
     GoRoute(path: '/user/removed', builder: (c, s) => const AccountRemovedPage()),
+    GoRoute(path: '/user/leaseExpired', builder: (c, s) => const LeaseExpiredPage()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/loading', builder: (context, state) => const RoleLoader()),
     GoRoute(
