@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:vanguardfyp/main/router.dart';
 
 /// 后台消息处理器（必须是顶级函数）
 @pragma('vm:entry-point')
@@ -107,8 +108,7 @@ class NotificationService {
     await _localNotifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
-        debugPrint('📱 Local notification tapped: ${response.payload}');
-        // 可以在这里处理通知点击跳转
+        _handleLocalNotificationTap(response.payload);
       },
     );
   }
@@ -144,11 +144,42 @@ class NotificationService {
     );
   }
 
-  /// 处理通知点击
+  /// 处理通知点击（FCM 推送通知）
   void _handleNotificationTap(RemoteMessage message) {
     debugPrint('👆 Notification tapped: ${message.data}');
-    // TODO: 根据 message.data 中的路由信息跳转到对应页面
-    // 例如: message.data['route'] = '/user/bookFacility'
+    
+    final route = message.data['route'];
+    if (route != null && route.isNotEmpty) {
+      _navigateToRoute(route);
+    }
+  }
+
+  /// 处理本地通知点击
+  void _handleLocalNotificationTap(String? payload) {
+    debugPrint('👆 Local notification tapped: $payload');
+    
+    if (payload != null && payload.isNotEmpty) {
+      _navigateToRoute(payload);
+    }
+  }
+
+  /// 导航到指定路由
+  void _navigateToRoute(String route) {
+    try {
+      // 使用 go_router 导航
+      appRouter.go(route);
+      debugPrint('✅ Navigated to: $route');
+    } catch (e) {
+      debugPrint('❌ Navigation failed: $e');
+      // 如果导航失败，尝试跳转到对应的 home 页面
+      if (route.startsWith('/admin')) {
+        appRouter.go('/admin');
+      } else if (route.startsWith('/security')) {
+        appRouter.go('/security');
+      } else {
+        appRouter.go('/user');
+      }
+    }
   }
 
   /// 获取 FCM Token
@@ -259,6 +290,7 @@ class NotificationService {
           presentSound: true,
         ),
       ),
+      payload: '/user/bookFacility', // 点击跳转到设施预订页面
     );
     debugPrint('✅ Booking confirmed notification sent');
   }
@@ -305,6 +337,7 @@ class NotificationService {
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
+      payload: '/user/bookFacility', // 点击跳转到设施预订页面
     );
     
     debugPrint('⏰ Booking reminder scheduled for $reminderTime');

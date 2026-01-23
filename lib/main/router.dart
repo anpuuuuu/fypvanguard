@@ -27,6 +27,7 @@ import '../user/user_chat_page.dart';
 import '../user/user_home.dart';
 import '../user/facility_booking.dart';
 import '../user/maintenance_request.dart';
+import '../user/RegisterVisitorForm.dart';
 
 // admin screens
 import '../admin/admin_home.dart';
@@ -120,6 +121,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/user/emergency',
       builder: (context, state) => const EmergencyPage(),
+    ),
+    GoRoute(
+      path: '/user/registerVisitor',
+      builder: (context, state) => const RegisterVisitorForm(entryType: 'walk-in'),
     ),
     GoRoute(
       path: '/user/chat',
