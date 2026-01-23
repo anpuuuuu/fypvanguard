@@ -126,9 +126,9 @@ class _AdminHomeState extends State<AdminHome> {
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
                           .collection('visitors')
-                          .where('timestamp',
-                          isGreaterThanOrEqualTo: todayStart)
-                          .where('timestamp', isLessThan: tomorrowStart)
+                          .where('createdAt',
+                          isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart))
+                          .where('createdAt', isLessThan: Timestamp.fromDate(tomorrowStart))
                           .snapshots(),
                       builder: (ctx, snap) {
                         final count =

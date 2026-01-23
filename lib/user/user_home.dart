@@ -118,8 +118,8 @@ class UserHomeState extends State<UserHome> {
     final visitorStream = FirebaseFirestore.instance
         .collection('visitors')
         .where('residentId', isEqualTo: _residentId)
-        .where('timestamp', isGreaterThanOrEqualTo: todayStart)
-        .where('timestamp', isLessThan: tomorrowStart)
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart))
+        .where('createdAt', isLessThan: Timestamp.fromDate(tomorrowStart))
         .snapshots();
     final bookingStream = FirebaseFirestore.instance
         .collection('bookings')

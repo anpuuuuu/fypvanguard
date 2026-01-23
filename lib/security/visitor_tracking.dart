@@ -111,7 +111,7 @@ class _VisitorTrackingPageState extends State<VisitorTrackingPage> {
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('visitors')
-                .orderBy('timestamp', descending: true)
+                .orderBy('createdAt', descending: true)
                 .snapshots(),
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
@@ -149,7 +149,7 @@ class _VisitorTrackingPageState extends State<VisitorTrackingPage> {
                   final borderColor = entryType == 'car'
                       ? Colors.red.shade700
                       : Colors.blue.shade700;
-                  final rel = _relativeTime(d['timestamp'] as Timestamp?);
+                  final rel = _relativeTime(d['createdAt'] as Timestamp?);
 
                   // determine next action
                   String btnText;

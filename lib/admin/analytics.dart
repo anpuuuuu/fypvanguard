@@ -111,7 +111,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('visitors')
-                    .orderBy('timestamp', descending: true)
+                    .orderBy('createdAt', descending: true)
                     .limit(5)
                     .snapshots(),
                 builder: (ctx, snap) {
@@ -127,7 +127,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                   return Column(
                     children: docs.map((doc) {
                       final d = doc.data() as Map<String, dynamic>;
-                      final time = (d['timestamp'] as Timestamp?)
+                      final time = (d['createdAt'] as Timestamp?)
                           ?.toDate()
                           .toLocal()
                           .toString()
