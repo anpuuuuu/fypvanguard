@@ -1,1 +1,37 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"vanguard-7ad09","appId":"1:72494482660:android:e4a7fdcce83256ebfa98f1","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"vanguard-7ad09","configurations":{"android":"1:72494482660:android:e4a7fdcce83256ebfa98f1"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "vanguard-7ad09",
+          "appId": "1:72494482660:android:e4a7fdcce83256ebfa98f1",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "vanguard-7ad09",
+          "configurations": {
+            "android": "1:72494482660:android:e4a7fdcce83256ebfa98f1"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    }
+  ]
+}

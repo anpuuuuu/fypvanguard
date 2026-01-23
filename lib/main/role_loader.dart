@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:vanguardfyp/services/lease_service.dart';
+import 'package:vanguardfyp/services/notification_service.dart';
 import 'router.dart'; // for fetchUserRole
 
 class RoleLoader extends StatefulWidget {
@@ -24,6 +25,9 @@ class _RoleLoaderState extends State<RoleLoader> {
   Future<void> _routeByRole() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) { context.go('/login'); return; }
+
+    // 保存 FCM Token 用于推送通知
+    await NotificationService().saveTokenToFirestore(user.uid);
 
     final doc = await FirebaseFirestore.instance
         .collection('accounts')

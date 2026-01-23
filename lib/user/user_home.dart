@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:vanguardfyp/services/string_extensions.dart';
+import 'package:vanguardfyp/services/notification_service.dart';
 import 'RegisterVisitorForm.dart';
 
 class UserHome extends StatefulWidget {
@@ -60,6 +61,11 @@ class UserHomeState extends State<UserHome> {
   }
 
   void _logout() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // 移除 FCM Token
+      await NotificationService().removeTokenOnLogout(user.uid);
+    }
     await FirebaseAuth.instance.signOut();
     GoRouter.of(context).go('/login');
   }

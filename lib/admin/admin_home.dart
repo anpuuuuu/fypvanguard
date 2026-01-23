@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:vanguardfyp/services/notification_service.dart';
 
 class AdminHome extends StatefulWidget {
   const AdminHome({Key? key}) : super(key: key);
@@ -36,6 +37,10 @@ class _AdminHomeState extends State<AdminHome> {
   }
 
   Future<void> _logout() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await NotificationService().removeTokenOnLogout(user.uid);
+    }
     await FirebaseAuth.instance.signOut();
     GoRouter.of(context).go('/login');
   }

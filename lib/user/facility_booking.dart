@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../services/booking_service.dart';
+import '../services/notification_service.dart';
 import 'RegisterVisitorForm.dart';
 
 /// Model for a facility document, including hours and optional image.
@@ -182,6 +183,20 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
         residentId: user.uid,
         facilityId: _selectedFacility!.id,
         bookingDate: start,
+        durationHours: _durationHours!,
+      );
+
+      // 发送预订确认通知
+      await NotificationService().showBookingConfirmedNotification(
+        facilityName: _selectedFacility!.name,
+        bookingTime: start,
+        durationHours: _durationHours!,
+      );
+
+      // 安排预订前 15 分钟提醒
+      await NotificationService().scheduleBookingReminder(
+        facilityName: _selectedFacility!.name,
+        bookingTime: start,
         durationHours: _durationHours!,
       );
 
@@ -403,6 +418,10 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
     if (confirmed == true) {
       try {
         await _bookingService.cancelBooking(bookingId);
+        
+        // 取消预订提醒通知
+        await NotificationService().cancelBookingReminder(ts);
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Booking cancelled', style: GoogleFonts.montserrat()),

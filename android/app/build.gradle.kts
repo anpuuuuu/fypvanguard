@@ -14,6 +14,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // 启用 core library desugaring，支持 flutter_local_notifications 在低版本 Android 上使用 Java 8 API
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -27,7 +29,7 @@ android {
         applicationId = "com.example.vanguardfyp"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = maxOf(flutter.minSdkVersion, 23)  // FCM 需要至少 API 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -44,4 +46,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Core library desugaring - 让 Java 8 API 在低版本 Android 上可用
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
