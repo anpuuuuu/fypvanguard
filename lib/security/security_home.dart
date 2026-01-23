@@ -35,7 +35,7 @@ class _SecurityHomeState extends State<SecurityHome> {
     } else {
       switch (idx) {
         case 1:
-          GoRouter.of(context).go('/security/visitorApproval');
+          GoRouter.of(context).go('/security/qrScanner');  // 改为 QR 扫描
           break;
         case 2:
           GoRouter.of(context).go('/security/visitorTracking');
@@ -232,7 +232,13 @@ class _SecurityHomeState extends State<SecurityHome> {
                   children: [
                     _ActionCard(
                       icon: Icons.qr_code_scanner,
-                      label: 'Approve Visitors',
+                      label: 'Scan QR Code',
+                      onTap: () =>
+                          GoRouter.of(context).go('/security/qrScanner'),
+                    ),
+                    _ActionCard(
+                      icon: Icons.how_to_reg,
+                      label: 'Approve Car Visitors',
                       onTap: () =>
                           GoRouter.of(context).go('/security/visitorApproval'),
                     ),
@@ -289,7 +295,7 @@ class _SecurityHomeState extends State<SecurityHome> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.qr_code_scanner), label: 'Visitors'),
+              icon: Icon(Icons.qr_code_scanner), label: 'Scan QR'),
           BottomNavigationBarItem(
               icon: Icon(Icons.person_pin), label: 'Tracking'),
           BottomNavigationBarItem(

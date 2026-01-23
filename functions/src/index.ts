@@ -7,6 +7,7 @@
 
 import * as admin from "firebase-admin";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 
 // 初始化 Firebase Admin
 admin.initializeApp();
@@ -29,6 +30,34 @@ async function getUserFcmTokens(userId: string): Promise<string[]> {
 async function getFacilityName(facilityId: string): Promise<string> {
   const facilityDoc = await db.collection("facilities").doc(facilityId).get();
   return facilityDoc.data()?.name || "Facility";
+}
+
+/**
+ * 辅助函数：获取所有安保的 FCM Tokens
+ */
+async function getAllSecurityFcmTokens(): Promise<string[]> {
+  const securitySnapshot = await db.collection("accounts")
+    .where("role", "==", "security")
+    .get();
+
+  const allTokens: string[] = [];
+  securitySnapshot.docs.forEach((doc) => {
+    const tokens = doc.data().fcmTokens || [];
+    allTokens.push(...tokens);
+  });
+  return allTokens;
+}
+
+/**
+ * 辅助函数：获取住户信息
+ */
+async function getResidentInfo(residentId: string): Promise<{ name: string; unit: string }> {
+  const residentDoc = await db.collection("residents").doc(residentId).get();
+  const data = residentDoc.data();
+  return {
+    name: data?.fullName || "Unknown",
+    unit: data?.unitNumber || "N/A",
+  };
 }
 
 /**
@@ -327,5 +356,190 @@ export const onNewOwnerRegistration = onDocumentCreated(
     );
 
     console.log(`Admin notification sent for new owner registration`);
+  }
+);
+
+// ============================================================
+// 5. 访客停车超时检查（定时任务）
+// ============================================================
+
+/**
+ * 每 15 分钟检查停车超时
+ * 1. 检查已入场超过 4 小时的 car 访客
+ * 2. 检查凌晨 2 点后还在的 car 访客
+ * 3. 检查过期的 QR 码
+ */
+export const checkVisitorOvertime = onSchedule(
+  {
+    schedule: "every 15 minutes",
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const now = admin.firestore.Timestamp.now();
+    const securityTokens = await getAllSecurityFcmTokens();
+    
+    if (securityTokens.length === 0) {
+      console.log("No security tokens found, skipping notifications");
+      return;
+    }
+
+    // 1. 检查停车超时（parkingDeadline 已过）
+    const overtimeSnapshot = await db.collection("visitors")
+      .where("status", "==", "checked-in")
+      .where("entryType", "==", "car")
+      .where("parkingDeadline", "<", now)
+      .get();
+
+    for (const doc of overtimeSnapshot.docs) {
+      const data = doc.data();
+      const visitorName = data.visitorName || "Visitor";
+      const vehiclePlate = data.vehiclePlate || "N/A";
+      const residentId = data.residentId || "";
+      
+      // 检查是否已经通知过（避免重复通知）
+      if (data.overtimeNotified) continue;
+      
+      const residentInfo = await getResidentInfo(residentId);
+      
+      await sendNotification(
+        securityTokens,
+        "Parking Overtime ⏰",
+        `${visitorName} (${vehiclePlate}) has exceeded parking time. Resident: ${residentInfo.name}, Unit ${residentInfo.unit}`,
+        { route: "/security/visitorTracking", type: "parking_overtime" }
+      );
+      
+      // 标记已通知
+      await doc.ref.update({ overtimeNotified: true });
+      
+      console.log(`Overtime notification sent for visitor ${doc.id}`);
+    }
+
+    // 2. 检查过期的 QR 码（approved 状态但 qrExpiresAt 已过）
+    const expiredQrSnapshot = await db.collection("visitors")
+      .where("status", "==", "approved")
+      .where("qrExpiresAt", "<", now)
+      .get();
+
+    for (const doc of expiredQrSnapshot.docs) {
+      await doc.ref.update({ status: "expired" });
+      console.log(`Visitor ${doc.id} QR code expired`);
+    }
+
+    console.log(`Overtime check completed. Overtime: ${overtimeSnapshot.size}, Expired QR: ${expiredQrSnapshot.size}`);
+  }
+);
+
+/**
+ * 凌晨 2 点警告 - 检查所有还在场内的 car 访客
+ * 每天凌晨 2:00 运行
+ */
+export const midnightParkingAlert = onSchedule(
+  {
+    schedule: "0 2 * * *",  // 每天凌晨 2:00
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const securityTokens = await getAllSecurityFcmTokens();
+    
+    if (securityTokens.length === 0) {
+      console.log("No security tokens found, skipping midnight alert");
+      return;
+    }
+
+    // 获取所有还在场内的 car 访客
+    const checkedInCarsSnapshot = await db.collection("visitors")
+      .where("status", "==", "checked-in")
+      .where("entryType", "==", "car")
+      .get();
+
+    if (checkedInCarsSnapshot.empty) {
+      console.log("No car visitors still checked in at 2 AM");
+      return;
+    }
+
+    // 收集所有超时访客信息
+    const visitorInfos: string[] = [];
+    
+    for (const doc of checkedInCarsSnapshot.docs) {
+      const data = doc.data();
+      const visitorName = data.visitorName || "Unknown";
+      const vehiclePlate = data.vehiclePlate || "N/A";
+      const residentId = data.residentId || "";
+      
+      const residentInfo = await getResidentInfo(residentId);
+      visitorInfos.push(`${visitorName} (${vehiclePlate}) - Unit ${residentInfo.unit}`);
+      
+      // 标记为过期
+      await doc.ref.update({ 
+        status: "expired",
+        expiredReason: "2AM_deadline",
+      });
+    }
+
+    // 发送汇总通知
+    await sendNotification(
+      securityTokens,
+      "🚨 2 AM Parking Alert",
+      `${visitorInfos.length} car visitor(s) still on premises: ${visitorInfos.slice(0, 3).join(", ")}${visitorInfos.length > 3 ? "..." : ""}`,
+      { route: "/security/visitorTracking", type: "midnight_alert" }
+    );
+
+    console.log(`2 AM alert sent for ${visitorInfos.length} visitors`);
+  }
+);
+
+/**
+ * 每小时检查 walk-in 访客是否超过 24 小时
+ */
+export const checkWalkInOvertime = onSchedule(
+  {
+    schedule: "every 1 hours",
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const now = admin.firestore.Timestamp.now();
+    const twentyFourHoursAgo = admin.firestore.Timestamp.fromMillis(
+      now.toMillis() - 24 * 60 * 60 * 1000
+    );
+    
+    const securityTokens = await getAllSecurityFcmTokens();
+
+    // 获取超过 24 小时还在的 walk-in 访客
+    const overtimeWalkInSnapshot = await db.collection("visitors")
+      .where("status", "==", "checked-in")
+      .where("entryType", "==", "walk-in")
+      .where("checkedInAt", "<", twentyFourHoursAgo)
+      .get();
+
+    for (const doc of overtimeWalkInSnapshot.docs) {
+      const data = doc.data();
+      
+      // 检查是否已通知过
+      if (data.overtimeNotified) continue;
+      
+      const visitorName = data.visitorName || "Visitor";
+      const residentId = data.residentId || "";
+      const residentInfo = await getResidentInfo(residentId);
+      
+      if (securityTokens.length > 0) {
+        await sendNotification(
+          securityTokens,
+          "Visitor Overstay ⚠️",
+          `${visitorName} (walk-in) has been on premises for over 24 hours. Resident: ${residentInfo.name}, Unit ${residentInfo.unit}`,
+          { route: "/security/visitorTracking", type: "walkin_overtime" }
+        );
+      }
+      
+      // 标记已通知并过期
+      await doc.ref.update({ 
+        overtimeNotified: true,
+        status: "expired",
+        expiredReason: "24h_overtime",
+      });
+      
+      console.log(`Walk-in overtime notification sent for visitor ${doc.id}`);
+    }
+
+    console.log(`Walk-in overtime check completed. Found: ${overtimeWalkInSnapshot.size}`);
   }
 );

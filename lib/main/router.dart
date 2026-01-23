@@ -28,6 +28,8 @@ import '../user/user_home.dart';
 import '../user/facility_booking.dart';
 import '../user/maintenance_request.dart';
 import '../user/RegisterVisitorForm.dart';
+import '../user/visitor_qr_page.dart';
+import '../security/qr_scanner_page.dart';
 
 // admin screens
 import '../admin/admin_home.dart';
@@ -127,6 +129,13 @@ final appRouter = GoRouter(
       builder: (context, state) => const RegisterVisitorForm(entryType: 'walk-in'),
     ),
     GoRoute(
+      path: '/user/visitorQr/:visitorId',
+      builder: (context, state) {
+        final visitorId = state.params['visitorId']!;
+        return VisitorQrPage(visitorId: visitorId);
+      },
+    ),
+    GoRoute(
       path: '/user/chat',
       builder: (context, state) => const UserChatPage(),
     ),
@@ -165,6 +174,7 @@ final appRouter = GoRouter(
 
     // Security routes
     GoRoute(path: '/security', builder: (context, state) => const SecurityHome()),
+    GoRoute(path: '/security/qrScanner', builder: (context, state) => const QrScannerPage()),
     GoRoute(path: '/security/visitorApproval', builder: (context, state) => const VisitorApprovalPage()),
     GoRoute(path: '/security/visitorTracking', builder: (context, state) => const VisitorTrackingPage()),
     GoRoute(path: '/security/bookingApproval', builder: (context, state) => const BookingApprovalPage()),

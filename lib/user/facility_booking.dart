@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 import '../services/booking_service.dart';
 import '../services/notification_service.dart';
@@ -143,14 +144,23 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
   }
 
   Future<void> _pickDate() async {
-    final today = DateTime.now();
+    // 使用马来西亚时区的今天
+    final malaysiaTime = tz.TZDateTime.now(tz.getLocation('Asia/Kuala_Lumpur'));
+    final today = DateTime(malaysiaTime.year, malaysiaTime.month, malaysiaTime.day);
+    
     final date = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? today,
       firstDate: today,
-      lastDate: today.add(const Duration(days: 365)),
+      lastDate: today.add(const Duration(days: 7)),  // 最多提前 7 天预订
     );
-    if (date != null) setState(() => _selectedDate = date);
+    if (date != null) {
+      setState(() {
+        _selectedDate = date;
+        _startHour = null;      // 重置时间选择
+        _durationHours = null;  // 重置时长选择
+      });
+    }
   }
 
   Future<void> _submitBooking() async {
@@ -457,15 +467,19 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final now = DateTime.now();
+          // 使用马来西亚时区
+          final malaysiaTime = tz.TZDateTime.now(tz.getLocation('Asia/Kuala_Lumpur'));
           final isToday = newDate != null &&
-              newDate!.year == now.year &&
-              newDate!.month == now.month &&
-              newDate!.day == now.day;
+              newDate!.year == malaysiaTime.year &&
+              newDate!.month == malaysiaTime.month &&
+              newDate!.day == malaysiaTime.day;
+          
+          // 计算最早可预订的小时（至少提前 1 小时）
+          final earliestHour = malaysiaTime.minute > 0 ? malaysiaTime.hour + 2 : malaysiaTime.hour + 1;
 
           final hours = <int>[
             for (var h = facility.startHour; h < facility.endHour; h++)
-              if (!(isToday && h <= now.hour)) h
+              if (!(isToday && h < earliestHour)) h
           ];
 
           // Duration 限制为 1 或 2 小时
@@ -525,12 +539,14 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
                   // 日期选择
                   InkWell(
                     onTap: () async {
-                      final today = DateTime.now();
+                      // 使用马来西亚时区
+                      final malaysiaTime = tz.TZDateTime.now(tz.getLocation('Asia/Kuala_Lumpur'));
+                      final today = DateTime(malaysiaTime.year, malaysiaTime.month, malaysiaTime.day);
                       final date = await showDatePicker(
                         context: context,
                         initialDate: newDate ?? today,
                         firstDate: today,
-                        lastDate: today.add(const Duration(days: 365)),
+                        lastDate: today.add(const Duration(days: 7)),  // 最多提前 7 天
                       );
                       if (date != null) {
                         setDialogState(() {
@@ -568,7 +584,7 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
 
                   const SizedBox(height: 12),
 
-                  // 开始时间
+                  // 开始时间 - 只有选择日期后才显示
                   if (newDate != null && hours.isNotEmpty)
                     DropdownButtonFormField<int>(
                       decoration: InputDecoration(
@@ -1145,24 +1161,48 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
       );
     }
 
+    // 使用马来西亚时区获取当前时间
+    final malaysiaTime = tz.TZDateTime.now(tz.getLocation('Asia/Kuala_Lumpur'));
+    
     // Figure out if booking date is today, to filter past hours
-    final now = DateTime.now();
     final isToday = _selectedDate != null &&
-        _selectedDate!.year == now.year &&
-        _selectedDate!.month == now.month &&
-        _selectedDate!.day == now.day;
-    final nowHour = now.hour;
+        _selectedDate!.year == malaysiaTime.year &&
+        _selectedDate!.month == malaysiaTime.month &&
+        _selectedDate!.day == malaysiaTime.day;
+    
+    // 计算最早可预订的小时（当前时间 + 1 小时，向上取整）
+    // 例如：现在 9:30 → 最早可预订 11:00
+    // 例如：现在 9:00 → 最早可预订 10:00
+    final earliestHour = malaysiaTime.minute > 0 ? malaysiaTime.hour + 2 : malaysiaTime.hour + 1;
+    
+    // Debug: 打印时间验证信息
+    debugPrint('⏰ Time validation (MY): now=${malaysiaTime.hour}:${malaysiaTime.minute}, isToday=$isToday, earliestHour=$earliestHour, selectedDate=$_selectedDate');
 
-    // Prepare hour options, excluding past hours if booking today
-    // 当前小时也不能选（需要至少提前 1 小时预订）
-    final hours = _selectedFacility == null
-        ? <int>[]
+    // Prepare hour options - 必须先选择日期才能选择时间
+    // 如果选择的是今天，过滤掉已过去的时间（至少提前 1 小时）
+    final hours = (_selectedFacility == null || _selectedDate == null)
+        ? <int>[]  // 没选设施或日期时，不显示时间选项
         : [
             for (var h = _selectedFacility!.startHour;
                 h < _selectedFacility!.endHour;
                 h++)
-              if (!(isToday && h <= nowHour)) h
+              if (!(isToday && h < earliestHour)) h
           ];
+    
+    // 如果当前选择的时间不在可选列表中，重置
+    if (_startHour != null && !hours.contains(_startHour)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _startHour = null;
+            _durationHours = null;
+          });
+        }
+      });
+    }
+    
+    // Debug: 打印可选时间
+    debugPrint('⏰ Available hours: $hours');
 
     // Duration 限制为 1 或 2 小时
     final maxDur = (_startHour != null && _selectedFacility != null)
@@ -1292,7 +1332,9 @@ class _FacilityBookingPageState extends State<FacilityBookingPage> {
                             borderRadius: BorderRadius.circular(8)),
                         hintText: _selectedFacility == null
                             ? 'Select facility first'
-                            : 'Pick a date first',
+                            : _selectedDate == null
+                                ? 'Select date first'
+                                : 'No available hours',
                       ),
                     ),
                   const SizedBox(height: 16),

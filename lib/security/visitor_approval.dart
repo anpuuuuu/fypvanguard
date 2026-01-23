@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/qr_service.dart';
+
 class VisitorApprovalPage extends StatefulWidget {
   const VisitorApprovalPage({Key? key}) : super(key: key);
 
@@ -15,14 +17,32 @@ class VisitorApprovalPage extends StatefulWidget {
 
 class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
   String _searchQuery = '';
-  final Set<String> _filterEntryTypes = {};
   String _filterDate = 'All'; // 'All','Today','This Week'
+  final QrService _qrService = QrService();
 
-  Future<void> _updateStatus(String id, String status) {
-    return FirebaseFirestore.instance
+  Future<void> _approveVisitor(String id) async {
+    // 使用 QrService 审批并生成 QR 码
+    await _qrService.approveVisitorAndGenerateQr(
+      visitorId: id,
+      entryType: 'car',
+    );
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Visitor approved! QR code generated.', 
+              style: GoogleFonts.montserrat()),
+          backgroundColor: Colors.green.shade400,
+        ),
+      );
+    }
+  }
+
+  Future<void> _denyVisitor(String id) async {
+    await FirebaseFirestore.instance
         .collection('visitors')
         .doc(id)
-        .update({'status': status});
+        .update({'status': 'denied'});
   }
 
   Future<Map<String, String>> _fetchResident(String rid) async {
@@ -105,31 +125,39 @@ class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
               ),
             ),
 
+            // — 提示信息 —
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Walk-in visitors are auto-approved. Only car visitors need manual approval.',
+                      style: GoogleFonts.montserrat(
+                        fontSize: 12,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            
             // — Filter chips —
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Wrap(
                 spacing: 8,
                 children: [
-                  FilterChip(
-                    label: const Text('Walk-In'),
-                    selected: _filterEntryTypes.contains('walk-in'),
-                    onSelected: (s) => setState(() {
-                      s
-                          ? _filterEntryTypes.add('walk-in')
-                          : _filterEntryTypes.remove('walk-in');
-                    }),
-                  ),
-                  FilterChip(
-                    label: const Text('By Car'),
-                    selected: _filterEntryTypes.contains('car'),
-                    onSelected: (s) => setState(() {
-                      s
-                          ? _filterEntryTypes.add('car')
-                          : _filterEntryTypes.remove('car');
-                    }),
-                  ),
-                  const SizedBox(width: 8),
                   FilterChip(
                     label: const Text('Today'),
                     selected: _filterDate == 'Today',
@@ -159,12 +187,13 @@ class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
             ),
             const SizedBox(height: 8),
 
-            // — Visitor list with buttons —
+            // — Visitor list with buttons (只显示 car 类型) —
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('visitors')
                   .where('status', isEqualTo: 'pending')
-                  .orderBy('timestamp', descending: true)
+                  .where('entryType', isEqualTo: 'car')  // 只显示 car 访客
+                  .orderBy('createdAt', descending: true)
                   .snapshots(),
               builder: (ctx, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
@@ -178,12 +207,8 @@ class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
                   (d['visitorName'] as String? ?? '').toLowerCase();
                   if (_searchQuery.isNotEmpty &&
                       !name.contains(_searchQuery)) return false;
-                  // entry filter
-                  final et = (d['entryType'] as String?) ?? '';
-                  if (_filterEntryTypes.isNotEmpty &&
-                      !_filterEntryTypes.contains(et)) return false;
                   // date filter
-                  final ts = d['timestamp'] as Timestamp?;
+                  final ts = d['createdAt'] as Timestamp?;
                   if (!_dateAllowed(ts)) return false;
                   return true;
                 }).toList();
@@ -209,10 +234,8 @@ class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
                     final d = doc.data() as Map<String, dynamic>;
                     final vid = doc.id;
                     final entryType = (d['entryType'] as String?) ?? '';
-                    final borderColor = entryType == 'car'
-                        ? Colors.red.shade700
-                        : Colors.blue.shade700;
-                    final relTime = _relativeTime(d['timestamp'] as Timestamp?);
+                    final borderColor = Colors.red.shade700;  // 只有 car 类型
+                    final relTime = _relativeTime(d['createdAt'] as Timestamp?);
 
                     return Card(
                       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -287,6 +310,29 @@ class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
                                 GoogleFonts.montserrat(fontSize: 14),
                               ),
 
+                              // 停车规则提示
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.timer, size: 16, color: Colors.orange.shade700),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Max 4h parking, must leave by 2 AM',
+                                      style: GoogleFonts.montserrat(
+                                        fontSize: 11,
+                                        color: Colors.orange.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              
                               // buttons row
                               const SizedBox(height: 8),
                               Row(
@@ -299,8 +345,7 @@ class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
                                     label: Text('Approve',
                                         style: GoogleFonts.montserrat(
                                             color: Colors.green)),
-                                    onPressed: () =>
-                                        _updateStatus(vid, 'approved'),
+                                    onPressed: () => _approveVisitor(vid),
                                   ),
                                   const SizedBox(width: 8),
                                   TextButton.icon(
@@ -309,8 +354,7 @@ class _VisitorApprovalPageState extends State<VisitorApprovalPage> {
                                     label: Text('Deny',
                                         style: GoogleFonts.montserrat(
                                             color: Colors.red)),
-                                    onPressed: () =>
-                                        _updateStatus(vid, 'denied'),
+                                    onPressed: () => _denyVisitor(vid),
                                   ),
                                 ],
                               ),

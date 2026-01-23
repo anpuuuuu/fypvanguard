@@ -11,6 +11,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../services/qr_service.dart';
+
 class RegisterVisitorForm extends StatefulWidget {
   final String entryType;
   const RegisterVisitorForm({Key? key, required this.entryType})
@@ -25,16 +27,9 @@ class _RegisterVisitorFormState extends State<RegisterVisitorForm> {
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _plateCtrl = TextEditingController();
-  String? _parkingDuration;
+  final _qrService = QrService();
   String? _residentId;
   bool _submitting = false;
-
-  final _durationOptions = [
-    {'label': '3 hours', 'value': '3h'},
-    {'label': '5 hours', 'value': '5h'},
-    {'label': '7 hours', 'value': '7h'},
-    {'label': 'Overnight', 'value': 'overnight'},
-  ];
 
   @override
   void initState() {
@@ -58,28 +53,51 @@ class _RegisterVisitorFormState extends State<RegisterVisitorForm> {
     if (!_formKey.currentState!.validate() || _residentId == null) return;
     setState(() => _submitting = true);
 
-    final data = {
+    final isWalkIn = widget.entryType == 'walk-in';
+    
+    final data = <String, dynamic>{
       'visitorName': _nameCtrl.text.trim(),
       'phoneNumber': _phoneCtrl.text.trim(),
       'residentId': _residentId,
       'entryType': widget.entryType,
-      'status': 'pending',
-      'timestamp': FieldValue.serverTimestamp(),
+      'status': isWalkIn ? 'approved' : 'pending',  // Walk-in 自动审批
+      'createdAt': FieldValue.serverTimestamp(),
     };
+    
     if (widget.entryType == 'car') {
       data['vehiclePlate'] = _plateCtrl.text.trim();
-      data['parkingDuration'] = _parkingDuration;
     }
 
     try {
-      await FirebaseFirestore.instance.collection('visitors').add(data);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Visitor request submitted!')),
-      );
+      // 创建访客记录
+      final docRef = await FirebaseFirestore.instance.collection('visitors').add(data);
+      
+      if (isWalkIn) {
+        // Walk-in: 自动生成 QR 码
+        await _qrService.approveVisitorAndGenerateQr(
+          visitorId: docRef.id,
+          entryType: 'walk-in',
+        );
+        
+        // 跳转到 QR 码页面
+        if (mounted) {
+          GoRouter.of(context).push('/user/visitorQr/${docRef.id}');
+        }
+      } else {
+        // By-car: 等待安保审批
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Visitor request submitted! Waiting for security approval.', 
+                style: GoogleFonts.montserrat()),
+            backgroundColor: Colors.orange.shade400,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      
       _nameCtrl.clear();
       _phoneCtrl.clear();
       _plateCtrl.clear();
-      setState(() => _parkingDuration = null);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
@@ -164,37 +182,30 @@ class _RegisterVisitorFormState extends State<RegisterVisitorForm> {
                                 const SizedBox(height: 16),
                                 _buildField(_plateCtrl, 'Car Plate Number',
                                     Icons.directions_car),
-                                const SizedBox(height: 16),
-                                DropdownButtonFormField<String>(
-                                  decoration: InputDecoration(
-                                    labelText: 'Parking Duration',
-                                    labelStyle:
-                                    GoogleFonts.montserrat(),
-                                    border: OutlineInputBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(8),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(8),
-                                      borderSide: BorderSide(
-                                          color: Colors.red.shade700),
-                                    ),
+                                const SizedBox(height: 12),
+                                // 停车规则提示
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.orange.shade200),
                                   ),
-                                  value: _parkingDuration,
-                                  items: _durationOptions
-                                      .map((opt) => DropdownMenuItem(
-                                    value: opt['value'],
-                                    child: Text(opt['label']!,
-                                        style: GoogleFonts
-                                            .montserrat()),
-                                  ))
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                          () => _parkingDuration = v),
-                                  validator: (v) => v == null
-                                      ? 'Please select a duration'
-                                      : null,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Parking rules: Max 4 hours, must leave by 2 AM',
+                                          style: GoogleFonts.montserrat(
+                                            fontSize: 12,
+                                            color: Colors.orange.shade700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                               const SizedBox(height: 24),
@@ -247,7 +258,7 @@ class _RegisterVisitorFormState extends State<RegisterVisitorForm> {
                   stream: FirebaseFirestore.instance
                       .collection('visitors')
                       .where('residentId', isEqualTo: _residentId)
-                      .orderBy('timestamp', descending: true)
+                      .orderBy('createdAt', descending: true)
                       .limit(20)
                       .snapshots(),
                   builder: (ctx, snap) {
@@ -304,14 +315,17 @@ class _RegisterVisitorFormState extends State<RegisterVisitorForm> {
                                 Icons.hourglass_bottom,
                                 color: Colors.orange);
                         }
-                        final ts = (d['timestamp'] as Timestamp?)
+                        final ts = (d['createdAt'] as Timestamp?)
                             ?.toDate();
                         final dateStr = ts == null
                             ? 'Unknown date'
                             : DateFormat('dd MMM yyyy')
                             .format(ts.toLocal());
                         final plate = d['vehiclePlate'] as String?;
-                        final dur = d['parkingDuration'] as String?;
+                        final hasQr = d['qrCode'] != null && 
+                            (status == 'approved' || status == 'checked-in');
+                        final visitorId = docs[i].id;
+                        
                         return Card(
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8)),
@@ -337,12 +351,6 @@ class _RegisterVisitorFormState extends State<RegisterVisitorForm> {
                                       style: GoogleFonts.montserrat(
                                           fontSize: 12)),
                                 ],
-                                if (dur != null) ...[
-                                  const SizedBox(height: 4),
-                                  Text('Duration: $dur',
-                                      style: GoogleFonts.montserrat(
-                                          fontSize: 12)),
-                                ],
                                 const SizedBox(height: 4),
                                 Text(
                                   'Status: ${status.toUpperCase()}',
@@ -352,6 +360,14 @@ class _RegisterVisitorFormState extends State<RegisterVisitorForm> {
                                 ),
                               ],
                             ),
+                            trailing: hasQr
+                                ? IconButton(
+                                    icon: Icon(Icons.qr_code, color: Colors.red.shade700),
+                                    onPressed: () {
+                                      GoRouter.of(context).push('/user/visitorQr/$visitorId');
+                                    },
+                                  )
+                                : null,
                           ),
                         );
                       },
