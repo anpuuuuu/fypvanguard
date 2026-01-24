@@ -77,14 +77,17 @@ class _SecurityChatPageState extends State<SecurityChatPage> {
         'senderId': _securityId,
         'message': text,
         'timestamp': FieldValue.serverTimestamp(),
-        'read': false,
+        'read': true, // Security's own messages are marked as read
       });
 
+      // Update chat room - don't increment unread count for security's own messages
+      // Only increment for resident's messages
       await _firestore.collection('chatRooms').doc(widget.residentId).set({
         'residentId': widget.residentId,
         'lastMessage': text,
         'lastTimestamp': FieldValue.serverTimestamp(),
-        'unreadCount': FieldValue.increment(1),
+        'lastSenderId': _securityId,
+        // Don't increment unread count when security sends a message
       }, SetOptions(merge: true));
 
       _msgController.clear();

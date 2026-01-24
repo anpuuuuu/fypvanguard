@@ -224,6 +224,7 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Column(
@@ -244,26 +245,32 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
                               fontSize: 14,
                               color: Colors.grey[600],
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'RM ${amount.toStringAsFixed(2)}',
-                      style: GoogleFonts.montserrat(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.red.shade700,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'RM ${amount.toStringAsFixed(2)}',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.red.shade700,
+                        ),
+                        textAlign: TextAlign.right,
                       ),
                     ),
                   ),
@@ -401,12 +408,14 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
                   color: Colors.blue.shade700,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Payment Information',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blue.shade700,
+                Expanded(
+                  child: Text(
+                    'Payment Information',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade700,
+                    ),
                   ),
                 ),
               ],
@@ -430,6 +439,7 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
         style: GoogleFonts.montserrat(
           fontSize: 13,
           color: Colors.blue.shade900,
+          height: 1.4,
         ),
       ),
     );

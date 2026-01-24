@@ -118,12 +118,23 @@ class BlockchainService {
   /// Get account balance (ETH)
   Future<String> getBalance(String address) async {
     if (!_initialized) await initialize();
-    final result = await _callRpc('eth_getBalance', [address, 'latest']);
-    final balanceHex = result as String;
-    // Convert to ETH (from Wei)
-    final balanceWei = BigInt.parse(balanceHex.substring(2), radix: 16);
-    final balanceEth = balanceWei / BigInt.from(1e18.toInt());
-    return balanceEth.toString();
+    try {
+      final result = await _callRpc('eth_getBalance', [address, 'latest']);
+      final balanceHex = result as String;
+      // Convert to ETH (from Wei)
+      // 1 ETH = 10^18 Wei
+      final balanceWei = BigInt.parse(balanceHex.substring(2), radix: 16);
+      final weiPerEth = BigInt.from(1000000000000000000); // 10^18
+      final ethWhole = balanceWei ~/ weiPerEth;
+      final ethRemainder = balanceWei % weiPerEth;
+      final ethDecimal = (ethRemainder.toDouble() / weiPerEth.toDouble());
+      final totalEth = ethWhole.toDouble() + ethDecimal;
+      
+      // Format to 4 decimal places
+      return totalEth.toStringAsFixed(4);
+    } catch (e) {
+      return 'Error';
+    }
   }
 
   /// Get current Gas price
@@ -259,8 +270,8 @@ class BlockchainService {
   static bool isValidAddress(String address) {
     if (address.isEmpty) return false;
     
-    // Remove whitespace and convert to lowercase
-    final cleaned = address.trim().toLowerCase();
+    // Remove all whitespace (including spaces in the middle) and convert to lowercase
+    final cleaned = address.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
     
     // Must start with 0x
     if (!cleaned.startsWith('0x')) {

@@ -134,59 +134,95 @@ class _MaintenanceReviewPageState extends State<MaintenanceReviewPage> {
 
   void _showCommentDialog(String requestId, String userId, String userName) {
     final commentController = TextEditingController();
+    bool isSubmitting = false;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Text(
-          'Add Comment/Update',
-          style: GoogleFonts.montserrat(fontWeight: FontWeight.w600),
-        ),
-        content: TextField(
-          controller: commentController,
-          decoration: InputDecoration(
-            hintText: 'Enter your comment or update...',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            filled: true,
-            fillColor: Colors.grey[50],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Text(
+            'Add Comment/Update',
+            style: GoogleFonts.montserrat(fontWeight: FontWeight.w600),
           ),
-          maxLines: 4,
-          style: GoogleFonts.montserrat(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.montserrat()),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (commentController.text.trim().isNotEmpty) {
-                await _service.addComment(
-                  requestId: requestId,
-                  userId: userId,
-                  userName: userName,
-                  comment: commentController.text.trim(),
-                );
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Comment added')),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          content: TextField(
+            controller: commentController,
+            decoration: InputDecoration(
+              hintText: 'Enter your comment or update...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
               ),
+              filled: true,
+              fillColor: Colors.grey[50],
             ),
-            child: Text('Add', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w600)),
+            maxLines: 4,
+            style: GoogleFonts.montserrat(),
+            enabled: !isSubmitting,
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(context),
+              child: Text('Cancel', style: GoogleFonts.montserrat()),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting ? null : () async {
+                final commentText = commentController.text.trim();
+                if (commentText.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a comment')),
+                  );
+                  return;
+                }
+                
+                setDialogState(() => isSubmitting = true);
+                
+                try {
+                  await _service.addComment(
+                    requestId: requestId,
+                    userId: userId,
+                    userName: userName,
+                    comment: commentText,
+                  );
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Comment added successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  setDialogState(() => isSubmitting = false);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to add comment: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text('Add', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
       ),
     );
   }

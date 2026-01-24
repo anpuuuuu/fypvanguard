@@ -180,42 +180,70 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
   /// Show full resident info (for owner/tenant)
   Future<void> _showUserProfile(String uid) async {
-    final acctSnap = await _accounts.doc(uid).get();
-    final resSnap =
-    await FirebaseFirestore.instance.collection('residents').doc(uid).get();
+    try {
+      final acctSnap = await _accounts.doc(uid).get();
+      final resSnap =
+          await FirebaseFirestore.instance.collection('residents').doc(uid).get();
 
-    final acct = acctSnap.data()! as Map<String, dynamic>;
-    final res = resSnap.data()! as Map<String, dynamic>;
+      if (!acctSnap.exists) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Account not found')),
+          );
+        }
+        return;
+      }
 
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(res['fullName'] ?? 'Profile', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Email: ${acct['username']}', style: GoogleFonts.montserrat()),
-            const SizedBox(height: 8),
-            Text('Role: ${acct['role']}', style: GoogleFonts.montserrat()),
-            const SizedBox(height: 8),
-            Text('Status: ${acct['status']}', style: GoogleFonts.montserrat()),
-            const Divider(),
-            Text('Full Name: ${res['fullName'] ?? '-'}', style: GoogleFonts.montserrat()),
-            const SizedBox(height: 8),
-            Text('Contact: ${res['contactNumber'] ?? '-'}', style: GoogleFonts.montserrat()),
-            const SizedBox(height: 8),
-            Text('Unit: ${res['unitNumber'] ?? '-'}', style: GoogleFonts.montserrat()),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Close', style: GoogleFonts.montserrat()),
-          )
-        ],
-      ),
-    );
+      final acct = acctSnap.data() as Map<String, dynamic>?;
+      final res = resSnap.exists ? resSnap.data() as Map<String, dynamic>? : null;
+
+      if (acct == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to load account data')),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text(res?['fullName'] ?? 'Profile', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Email: ${acct['username'] ?? '-'}', style: GoogleFonts.montserrat()),
+                const SizedBox(height: 8),
+                Text('Role: ${acct['role'] ?? '-'}', style: GoogleFonts.montserrat()),
+                const SizedBox(height: 8),
+                Text('Status: ${acct['status'] ?? '-'}', style: GoogleFonts.montserrat()),
+                const Divider(),
+                Text('Full Name: ${res?['fullName'] ?? '-'}', style: GoogleFonts.montserrat()),
+                const SizedBox(height: 8),
+                Text('Contact: ${res?['contactNumber'] ?? '-'}', style: GoogleFonts.montserrat()),
+                const SizedBox(height: 8),
+                Text('Unit: ${res?['unitNumber'] ?? '-'}', style: GoogleFonts.montserrat()),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Close', style: GoogleFonts.montserrat()),
+              )
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading profile: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   @override
@@ -405,13 +433,15 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     final createdAt = d['createdAt'] as Timestamp?;
                     final isSelected = _selectedUsers.contains(doc.id);
 
-                    return FutureBuilder<DocumentSnapshot>(
+                    return FutureBuilder<DocumentSnapshot?>(
                       future: (role == 'owner' || role == 'tenant')
                           ? FirebaseFirestore.instance.collection('residents').doc(doc.id).get()
                           : Future.value(null),
                       builder: (context, residentSnapshot) {
                         String displayName = email.split('@').first;
-                        if (residentSnapshot.hasData && residentSnapshot.data!.exists) {
+                        if (residentSnapshot.hasData && 
+                            residentSnapshot.data != null && 
+                            residentSnapshot.data!.exists) {
                           final residentData = residentSnapshot.data!.data() as Map<String, dynamic>?;
                           displayName = residentData?['fullName'] ?? displayName;
                         }

@@ -415,12 +415,14 @@ class _PaymentMethodSelectionPageState
               children: [
                 Icon(Icons.info_outline, color: Colors.orange.shade700),
                 const SizedBox(width: 8),
-                Text(
-                  'Blockchain Payment Information',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.orange.shade700,
+                Expanded(
+                  child: Text(
+                    'Blockchain Payment Information',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange.shade700,
+                    ),
                   ),
                 ),
               ],
@@ -431,12 +433,12 @@ class _PaymentMethodSelectionPageState
               style: GoogleFonts.montserrat(
                 fontSize: 13,
                 color: Colors.orange.shade900,
+                height: 1.4,
               ),
             ),
             const SizedBox(height: 8),
             _buildInfoItem('• Use pre-configured Ganache test accounts (each has 100 ETH)'),
-            _buildInfoItem('• Generate a new blockchain account'),
-            _buildInfoItem('• Manually enter address and private key (advanced option)'),
+            _buildInfoItem('• Manually enter address and private key (advanced)'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
@@ -450,6 +452,7 @@ class _PaymentMethodSelectionPageState
                   fontSize: 11,
                   color: Colors.orange.shade800,
                   fontStyle: FontStyle.italic,
+                  height: 1.4,
                 ),
               ),
             ),
@@ -461,15 +464,18 @@ class _PaymentMethodSelectionPageState
 
   Widget _buildInfoItem(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            text,
-            style: GoogleFonts.montserrat(
-              fontSize: 12,
-              color: Colors.orange.shade900,
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.montserrat(
+                fontSize: 12,
+                color: Colors.orange.shade900,
+                height: 1.4,
+              ),
             ),
           ),
         ],
@@ -493,14 +499,16 @@ class _PaymentMethodSelectionPageState
               children: [
                 Icon(Icons.info_outline, color: Colors.blue.shade700),
                 const SizedBox(width: 8),
-            Text(
-              'Secure Card Payment (Virtual Payment)',
-              style: GoogleFonts.montserrat(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.blue.shade700,
-              ),
-            ),
+                Expanded(
+                  child: Text(
+                    'Secure Card Payment (Virtual Payment)',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -509,6 +517,7 @@ class _PaymentMethodSelectionPageState
               style: GoogleFonts.montserrat(
                 fontSize: 13,
                 color: Colors.blue.shade900,
+                height: 1.4,
               ),
             ),
           ],

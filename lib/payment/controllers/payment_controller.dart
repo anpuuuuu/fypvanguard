@@ -21,14 +21,16 @@ class PaymentController {
   }
 
   /// Process blockchain payment
-  /// [amount] - Payment amount (ETH)
+  /// [amount] - Payment amount in RM (Malaysian Ringgit)
+  /// [ethAmount] - Payment amount in ETH (converted from RM)
   /// [feeType] - Fee type
   /// [fromAddress] - Sender address (from Ganache)
   /// [privateKey] - User private key (should be retrieved from secure storage)
   /// [toAddress] - Recipient address (management address)
   /// [description] - Payment description
   Future<Transaction> processBlockchainPayment({
-    required double amount,
+    required double amount, // RM amount (original)
+    required double ethAmount, // ETH amount (converted)
     required FeeType feeType,
     required String fromAddress,
     required String privateKey,
@@ -49,16 +51,21 @@ class PaymentController {
     final residentId = accountData?['residentId'] as String? ?? user.uid;
 
     // Create pending transaction record
+    // Store original RM amount, not ETH amount
     final transaction = Transaction(
       userId: user.uid,
       residentId: residentId,
-      amount: amount,
+      amount: amount, // Store original RM amount
       feeType: feeType,
       paymentMethod: PaymentMethod.blockchain,
       status: TransactionStatus.pending,
       createdAt: DateTime.now(),
       toAddress: toAddress,
       description: description,
+      metadata: {
+        'ethAmount': ethAmount, // Store ETH amount in metadata
+        'conversionRate': ethAmount / amount, // Store conversion rate
+      },
     );
 
     // Save to Firestore
@@ -72,12 +79,12 @@ class PaymentController {
         'status': TransactionStatus.processing.toString().split('.').last,
       });
 
-      // Send blockchain transaction
+      // Send blockchain transaction using ETH amount
       final transactionHash = await _blockchainService.sendTransaction(
         fromAddress: fromAddress,
         privateKey: privateKey,
         toAddress: toAddress,
-        amount: amount,
+        amount: ethAmount, // Use converted ETH amount
       );
 
       // Wait for transaction confirmation (optional, can be processed asynchronously)

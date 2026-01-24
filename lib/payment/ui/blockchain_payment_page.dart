@@ -2,6 +2,7 @@
 // Simplified blockchain payment page with account selection
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/transaction_model.dart';
 import '../controllers/payment_controller.dart';
@@ -28,12 +29,9 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
   final PaymentController _controller = PaymentController();
   final _formKey = GlobalKey<FormState>();
   bool _isProcessing = false;
-  bool _showAdvancedOptions = false;
 
   // Account selection
   PreconfiguredAccount? _selectedAccount;
-  Map<String, String>? _generatedAccount;
-  bool _useGeneratedAccount = false;
 
   // Manual input (advanced)
   final TextEditingController _fromAddressController = TextEditingController();
@@ -42,6 +40,19 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
   
   // Private key input for preconfigured accounts
   final TextEditingController _preconfiguredPrivateKeyController = TextEditingController();
+
+  // RM to ETH conversion rate
+  // Based on approximate rate: 1 RM ≈ 0.0000846 ETH (or 1 ETH ≈ 11,820 RM)
+  // This is a fixed rate for testing. In production, you should fetch real-time rates from an API
+  static const double _rmToEthRate = 0.0000846; // 1 RM = 0.0000846 ETH
+
+  /// Convert RM amount to ETH
+  double _convertRmToEth(double rmAmount) {
+    return rmAmount * _rmToEthRate;
+  }
+
+  /// Get ETH amount for display
+  double get _ethAmount => _convertRmToEth(widget.amount);
 
   @override
   void initState() {
@@ -58,39 +69,6 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
     super.dispose();
   }
 
-  Future<void> _generateNewAccount() async {
-    setState(() => _isProcessing = true);
-    try {
-      final account = await WalletService().generateNewAccount();
-      setState(() {
-        _generatedAccount = account;
-        _useGeneratedAccount = true;
-        _selectedAccount = null;
-        _useManualInput = false;
-        _isProcessing = false;
-      });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('New account generated! Please save your private key.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() => _isProcessing = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to generate account: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _processPayment() async {
     String? fromAddress;
     String? privateKey;
@@ -101,9 +79,6 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
       }
       fromAddress = WalletService.formatAddress(_fromAddressController.text);
       privateKey = WalletService.formatPrivateKey(_privateKeyController.text);
-    } else if (_useGeneratedAccount && _generatedAccount != null) {
-      fromAddress = WalletService.formatAddress(_generatedAccount!['address']!);
-      privateKey = WalletService.formatPrivateKey(_generatedAccount!['privateKey']!);
     } else if (_selectedAccount != null) {
       fromAddress = WalletService.formatAddress(_selectedAccount!.address);
       // Get private key from input field if preconfigured account doesn't have it
@@ -153,8 +128,71 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
         );
       }
       
+      // Convert RM amount to ETH before sending
+      final ethAmount = _convertRmToEth(widget.amount);
+      
+      // Show confirmation dialog with conversion
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Confirm Payment', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Payment Amount:', style: GoogleFonts.montserrat(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Text('RM ${widget.amount.toStringAsFixed(2)}', style: GoogleFonts.montserrat(fontSize: 18)),
+              const SizedBox(height: 12),
+              Text('ETH Amount:', style: GoogleFonts.montserrat(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Text('${ethAmount.toStringAsFixed(6)} ETH', 
+                style: GoogleFonts.montserrat(fontSize: 18, color: Colors.blue.shade700)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.amber.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Rate: 1 RM = ${_rmToEthRate.toStringAsFixed(6)} ETH',
+                        style: GoogleFonts.montserrat(fontSize: 11, color: Colors.amber.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancel', style: GoogleFonts.montserrat()),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700),
+              child: Text('Confirm', style: GoogleFonts.montserrat(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) {
+        setState(() => _isProcessing = false);
+        return;
+      }
+
       final transaction = await _controller.processBlockchainPayment(
-        amount: widget.amount,
+        amount: widget.amount, // Original RM amount
+        ethAmount: ethAmount, // Converted ETH amount
         feeType: widget.feeType,
         fromAddress: fromAddress,
         privateKey: privateKey,
@@ -209,6 +247,70 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
     }
   }
 
+  void _showAccountSelector() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Select Account',
+          style: GoogleFonts.montserrat(fontWeight: FontWeight.bold),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: WalletService.preconfiguredAccounts.length,
+            itemBuilder: (context, index) {
+              final account = WalletService.preconfiguredAccounts[index];
+              return ListTile(
+                title: Text(
+                  'Account ${account.index + 1}',
+                  style: GoogleFonts.montserrat(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  '${account.address.substring(0, 10)}...${account.address.substring(account.address.length - 8)}',
+                  style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.content_copy, size: 20),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: account.address));
+                    Navigator.pop(context);
+                    _fromAddressController.text = account.address;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Address copied to input field'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  tooltip: 'Copy address',
+                ),
+                onTap: () {
+                  _fromAddressController.text = account.address;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Address filled from Account ${account.index + 1}'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.montserrat()),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -259,7 +361,6 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
 
             // Private key input for preconfigured account
             if (_selectedAccount != null && 
-                !_useGeneratedAccount && 
                 !_useManualInput &&
                 _selectedAccount!.privateKey.isEmpty) ...[
               const SizedBox(height: 16),
@@ -268,17 +369,8 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
 
             const SizedBox(height: 16),
 
-            // Generate new account button
-            _buildGenerateAccountButton(),
-
-            const SizedBox(height: 16),
-
-            // Advanced options toggle
-            _buildAdvancedOptionsToggle(),
-
-            // Manual input form (advanced)
-            if (_showAdvancedOptions && _useManualInput)
-              _buildManualInputForm(),
+            // Advanced options (Manual Address and Private Key Input)
+            _buildManualInputForm(),
 
             const SizedBox(height: 24),
 
@@ -287,7 +379,7 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: (_isProcessing || 
-                    (!_useManualInput && !_useGeneratedAccount && _selectedAccount == null))
+                    (!_useManualInput && _selectedAccount == null))
                     ? null
                     : _processPayment,
                 style: ElevatedButton.styleFrom(
@@ -306,13 +398,26 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
                           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
-                    : Text(
-                        'Confirm Payment RM ${widget.amount.toStringAsFixed(2)}',
-                        style: GoogleFonts.montserrat(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Confirm Payment',
+                            style: GoogleFonts.montserrat(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'RM ${widget.amount.toStringAsFixed(2)} (${_ethAmount.toStringAsFixed(6)} ETH)',
+                            style: GoogleFonts.montserrat(
+                              fontSize: 12,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
                       ),
               ),
             ),
@@ -415,7 +520,7 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Amount',
+                  'Amount (RM)',
                   style: GoogleFonts.montserrat(
                     fontSize: 14,
                     color: Colors.grey[600],
@@ -427,6 +532,59 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: Colors.red.shade700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet, size: 16, color: Colors.blue.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'ETH Amount',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${_ethAmount.toStringAsFixed(6)} ETH',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.info_outline, size: 12, color: Colors.grey[600]),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Rate: 1 RM ≈ ${_rmToEthRate.toStringAsFixed(6)} ETH',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
               ],
@@ -458,14 +616,13 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
             const SizedBox(height: 12),
             ...WalletService.preconfiguredAccounts.map((account) {
               final isSelected = _selectedAccount?.index == account.index && 
-                  !_useGeneratedAccount && !_useManualInput;
+                  !_useManualInput;
               return _buildAccountCard(
                 account: account,
                 isSelected: isSelected,
                 onTap: () {
                   setState(() {
                     _selectedAccount = account;
-                    _useGeneratedAccount = false;
                     _useManualInput = false;
                   });
                 },
@@ -483,223 +640,131 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
     required VoidCallback onTap,
   }) {
     final needsPrivateKey = account.privateKey.isEmpty;
-    return Card(
-      elevation: isSelected ? 4 : 1,
-      color: isSelected ? Colors.orange.shade50 : Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: isSelected ? Colors.orange : Colors.grey.shade300,
-          width: isSelected ? 2 : 1,
-        ),
-      ),
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              Row(
+    return FutureBuilder<String>(
+      future: WalletService().getAccountBalance(account.address),
+      builder: (context, snapshot) {
+        final balance = snapshot.hasData && !snapshot.hasError
+            ? snapshot.data!
+            : account.balance;
+        final isLoadingBalance = snapshot.connectionState == ConnectionState.waiting;
+        
+        return Card(
+          elevation: isSelected ? 4 : 1,
+          color: isSelected ? Colors.orange.shade50 : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(
+              color: isSelected ? Colors.orange : Colors.grey.shade300,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          margin: const EdgeInsets.only(bottom: 8),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
                 children: [
-                  Radio<bool>(
-                    value: true,
-                    groupValue: isSelected,
-                    onChanged: (_) => onTap(),
-                    activeColor: Colors.orange,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Account ${account.index + 1}',
-                          style: GoogleFonts.montserrat(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${account.address.substring(0, 10)}...${account.address.substring(account.address.length - 8)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          account.balance,
-                          style: GoogleFonts.montserrat(
-                            fontSize: 12,
-                            color: Colors.green.shade700,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (needsPrivateKey && isSelected) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
+                  Row(
                     children: [
-                      Icon(Icons.info_outline, size: 16, color: Colors.amber.shade700),
-                      const SizedBox(width: 8),
+                      Radio<bool>(
+                        value: true,
+                        groupValue: isSelected,
+                        onChanged: (_) => onTap(),
+                        activeColor: Colors.orange,
+                      ),
                       Expanded(
-                        child: Text(
-                          'Please enter the private key for this account below (get it from Ganache)',
-                          style: GoogleFonts.montserrat(
-                            fontSize: 11,
-                            color: Colors.amber.shade900,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Account ${account.index + 1}',
+                              style: GoogleFonts.montserrat(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${account.address.substring(0, 10)}...${account.address.substring(account.address.length - 8)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            if (isLoadingBalance)
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Loading balance...',
+                                    style: GoogleFonts.montserrat(
+                                      fontSize: 11,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              Text(
+                                'Balance: $balance ETH',
+                                style: GoogleFonts.montserrat(
+                                  fontSize: 12,
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGenerateAccountButton() {
-    if (_useGeneratedAccount && _generatedAccount != null) {
-      return Card(
-        elevation: 2,
-        color: Colors.green.shade50,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.green.shade300, width: 2),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green.shade700),
-                  const SizedBox(width: 8),
-                  Text(
-                    'New Account Generated',
-                    style: GoogleFonts.montserrat(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.green.shade700,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Address: ${_generatedAccount!['address']}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.warning_amber, color: Colors.amber.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Please save your private key! New accounts need funds imported from Ganache to be usable.',
-                        style: GoogleFonts.montserrat(
-                          fontSize: 11,
-                          color: Colors.amber.shade900,
-                        ),
+                  if (needsPrivateKey && isSelected) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Colors.amber.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Please enter the private key for this account below (get it from Ganache)',
+                              style: GoogleFonts.montserrat(
+                                fontSize: 11,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: _isProcessing ? null : _generateNewAccount,
-        icon: const Icon(Icons.add_circle_outline),
-        label: Text(
-          'Generate New Account',
-          style: GoogleFonts.montserrat(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          side: BorderSide(color: Colors.orange.shade700),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildAdvancedOptionsToggle() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _showAdvancedOptions = !_showAdvancedOptions;
-            if (!_showAdvancedOptions) {
-              _useManualInput = false;
-            }
-          });
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Advanced Options (Manual Address and Private Key Input)',
-                style: GoogleFonts.montserrat(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Icon(
-                _showAdvancedOptions ? Icons.expand_less : Icons.expand_more,
-                color: Colors.grey[600],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildManualInputForm() {
     return Card(
@@ -714,6 +779,14 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Advanced Options (Manual Address and Private Key Input)',
+                style: GoogleFonts.montserrat(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Checkbox(
@@ -723,7 +796,6 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
                         _useManualInput = value ?? false;
                         if (!_useManualInput) {
                           _selectedAccount = null;
-                          _useGeneratedAccount = false;
                         }
                       });
                     },
@@ -742,25 +814,61 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
               ),
               if (_useManualInput) ...[
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _fromAddressController,
-                  decoration: InputDecoration(
-                    labelText: 'Sender Address',
-                    hintText: '0x...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _fromAddressController,
+                        decoration: InputDecoration(
+                          labelText: 'Sender Address',
+                          hintText: '0x... (42 characters)',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          prefixIcon: const Icon(Icons.account_balance_wallet),
+                          helperText: 'Ethereum address must be 42 characters (0x + 40 hex)',
+                        ),
+                        inputFormatters: [
+                          // Remove spaces and convert to lowercase
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-Fx]')),
+                        ],
+                        onChanged: (value) {
+                          // Auto-format: remove spaces and ensure lowercase
+                          final cleaned = value.trim().toLowerCase().replaceAll(' ', '');
+                          if (cleaned != value && _fromAddressController.text != cleaned) {
+                            final selection = _fromAddressController.selection;
+                            _fromAddressController.value = TextEditingValue(
+                              text: cleaned,
+                              selection: TextSelection.collapsed(offset: cleaned.length),
+                            );
+                          }
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter sender address';
+                          }
+                          // Clean the address before validation
+                          final cleaned = value.trim().toLowerCase().replaceAll(' ', '');
+                          if (!cleaned.startsWith('0x')) {
+                            return 'Address must start with 0x';
+                          }
+                          if (cleaned.length != 42) {
+                            return 'Address must be 42 characters (currently ${cleaned.length}). Expected: 0x + 40 hex characters';
+                          }
+                          if (!WalletService.isValidAddress(cleaned)) {
+                            return 'Invalid Ethereum address format. Must be 42 characters: 0x followed by 40 hexadecimal characters';
+                          }
+                          return null;
+                        },
+                      ),
                     ),
-                    prefixIcon: const Icon(Icons.account_balance_wallet),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter sender address';
-                    }
-                    if (!WalletService.isValidAddress(value)) {
-                      return 'Invalid Ethereum address format';
-                    }
-                    return null;
-                  },
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_drop_down),
+                      tooltip: 'Select from preconfigured accounts',
+                      onPressed: () => _showAccountSelector(),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 TextFormField(

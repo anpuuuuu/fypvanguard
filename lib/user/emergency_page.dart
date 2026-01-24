@@ -21,6 +21,8 @@ class _EmergencyPageState extends State<EmergencyPage> {
   bool _sending = false;
   String? _managementNumber;
   String? _securityNumber;
+  String? _policeNumber;
+  String? _fireNumber;
   bool _loadingNumbers = true;
   String _selectedEmergencyType = 'alert_guard';
   
@@ -47,6 +49,12 @@ class _EmergencyPageState extends State<EmergencyPage> {
         setState(() {
           _managementNumber = data['managementOffice'];
           _securityNumber = data['security'];
+          _policeNumber = data['police'];
+          _fireNumber = data['fire'];
+          _loadingNumbers = false;
+        });
+      } else {
+        setState(() {
           _loadingNumbers = false;
         });
       }
@@ -54,9 +62,11 @@ class _EmergencyPageState extends State<EmergencyPage> {
       setState(() {
         _loadingNumbers = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load emergency contacts: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load emergency contacts: $e')),
+        );
+      }
     }
   }
 
@@ -352,6 +362,26 @@ class _EmergencyPageState extends State<EmergencyPage> {
                         ? null
                         : () => _callNumber(_securityNumber!),
                   ),
+                  if (_policeNumber != null && _policeNumber!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _EmergencyButton(
+                      icon: Icons.local_police,
+                      label: 'Call Police',
+                      color: Colors.blue.shade800,
+                      loading: false,
+                      onPressed: () => _callNumber(_policeNumber!),
+                    ),
+                  ],
+                  if (_fireNumber != null && _fireNumber!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _EmergencyButton(
+                      icon: Icons.local_fire_department,
+                      label: 'Call Fire Department',
+                      color: Colors.red,
+                      loading: false,
+                      onPressed: () => _callNumber(_fireNumber!),
+                    ),
+                  ],
                 ],
               ),
             ),

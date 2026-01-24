@@ -43,11 +43,13 @@ class MaintenanceService {
     final requestData = await requestDoc.get();
     final currentComments = (requestData.data() as Map<String, dynamic>?)?['comments'] as List<dynamic>? ?? [];
     
+    // Use Timestamp.now() instead of FieldValue.serverTimestamp() 
+    // because FieldValue.serverTimestamp() cannot be used inside arrays
     currentComments.add({
       'userId': userId,
       'userName': userName,
       'comment': comment,
-      'createdAt': FieldValue.serverTimestamp(),
+      'createdAt': Timestamp.now(),
     });
 
     await requestDoc.update({
