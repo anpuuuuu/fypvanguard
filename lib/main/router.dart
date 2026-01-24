@@ -26,6 +26,7 @@ import '../user/tenantRegister.dart';
 import '../user/user_chat_page.dart';
 import '../user/user_home.dart';
 import '../user/facility_booking.dart';
+import '../user/help_assistant_page.dart';
 import '../user/maintenance_request.dart';
 import '../user/RegisterVisitorForm.dart';
 import '../user/face_registration_page.dart';
@@ -152,6 +153,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/user/chat',
       builder: (context, state) => const UserChatPage(),
+    ),
+    GoRoute(
+      path: '/user/helpAssistant',
+      builder: (context, state) => const HelpAssistantPage(),
     ),
     GoRoute(
       path: '/groupChat',

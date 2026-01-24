@@ -187,9 +187,23 @@ class UserHomeState extends State<UserHome> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => GoRouter.of(context).go('/user/helpAssistant'),
+        backgroundColor: Colors.red.shade700,
+        icon: const Icon(Icons.help_outline, color: Colors.white),
+        label: Text(
+          'Help Assistant',
+          style: GoogleFonts.montserrat(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        elevation: 4,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.only(bottom: 80),
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
@@ -381,6 +395,11 @@ class UserHomeState extends State<UserHome> {
                         onTap: () =>
                             GoRouter.of(context).go('/user/chat')),
                     _ActionCard(
+                        icon: Icons.help_outline,
+                        label: 'Help Assistant',
+                        onTap: () =>
+                            GoRouter.of(context).go('/user/helpAssistant')),
+                    _ActionCard(
                         icon: Icons.forum,
                         label: 'Resident Forum',
                         onTap: () =>
@@ -433,7 +452,7 @@ class UserHomeState extends State<UserHome> {
               GoRouter.of(context).go('/user/bookFacility');
               break;
             case 3:
-              GoRouter.of(context).go('/user/payment');
+              GoRouter.of(context).go('/user/maintenanceRequest');
               break;
             case 4:
               GoRouter.of(context).go('/userprofile');
@@ -446,7 +465,7 @@ class UserHomeState extends State<UserHome> {
               icon: Icon(Icons.person_add), label: 'Visitor'),
           BottomNavigationBarItem(
               icon: Icon(Icons.event_available), label: 'Facility'),
-          BottomNavigationBarItem(icon: Icon(Icons.payment), label: 'Payment'),
+          BottomNavigationBarItem(icon: Icon(Icons.build), label: 'Maintain'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
