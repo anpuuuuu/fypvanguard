@@ -366,11 +366,6 @@ class UserHomeState extends State<UserHome> {
                         label: 'Visitor',
                         onTap: _showEntryDialog),
                     _ActionCard(
-                      icon: Icons.payment,
-                      label: 'Payment',
-                      onTap: () => GoRouter.of(context).go('/user/payment'),
-                    ),
-                    _ActionCard(
                         icon: Icons.event_available,
                         label: 'Facility',
                         onTap: () =>
@@ -405,11 +400,6 @@ class UserHomeState extends State<UserHome> {
                       icon: Icons.feedback,
                       label: 'Feedback',
                       onTap: () => GoRouter.of(context).go('/user/feedback'),
-                    ),
-                    _ActionCard(
-                      icon: Icons.payment,
-                      label: 'Payment',
-                      onTap: () => GoRouter.of(context).go('/user/payment'),
                     ),
                     _ActionCard(
                         icon: Icons.person,
