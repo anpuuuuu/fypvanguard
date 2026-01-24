@@ -42,6 +42,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // 防止 tflite 模型被压缩
+    aaptOptions {
+        noCompress += "tflite"
+    }
 }
 
 flutter {
