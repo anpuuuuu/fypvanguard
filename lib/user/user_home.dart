@@ -190,6 +190,7 @@ class UserHomeState extends State<UserHome> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 16),
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
               // 1) Announcements Carousel
@@ -283,6 +284,72 @@ class UserHomeState extends State<UserHome> {
                 child: const Divider(thickness: 1),
               ),
 
+              // Payment Quick Access Card
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Card(
+                  elevation: 3,
+                  color: Colors.red.shade50,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: InkWell(
+                    onTap: () => GoRouter.of(context).go('/user/payment'),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade700,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.payment,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Payment Center',
+                                  style: GoogleFonts.montserrat(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Manage your payments and view transaction history',
+                                  style: GoogleFonts.montserrat(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.red.shade700,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
               // 3) Action Grid
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -298,6 +365,11 @@ class UserHomeState extends State<UserHome> {
                         icon: Icons.person_add,
                         label: 'Visitor',
                         onTap: _showEntryDialog),
+                    _ActionCard(
+                      icon: Icons.payment,
+                      label: 'Payment',
+                      onTap: () => GoRouter.of(context).go('/user/payment'),
+                    ),
                     _ActionCard(
                         icon: Icons.event_available,
                         label: 'Facility',
@@ -353,6 +425,7 @@ class UserHomeState extends State<UserHome> {
         showUnselectedLabels: true,
         selectedLabelStyle: GoogleFonts.montserrat(fontSize: 12),
         unselectedLabelStyle: GoogleFonts.montserrat(fontSize: 12),
+        type: BottomNavigationBarType.fixed,
         onTap: (i) {
           switch (i) {
             case 0:
@@ -365,7 +438,7 @@ class UserHomeState extends State<UserHome> {
               GoRouter.of(context).go('/user/bookFacility');
               break;
             case 3:
-              GoRouter.of(context).go('/user/maintenanceRequest');
+              GoRouter.of(context).go('/user/payment');
               break;
             case 4:
               GoRouter.of(context).go('/userprofile');
@@ -378,7 +451,7 @@ class UserHomeState extends State<UserHome> {
               icon: Icon(Icons.person_add), label: 'Visitor'),
           BottomNavigationBarItem(
               icon: Icon(Icons.event_available), label: 'Facility'),
-          BottomNavigationBarItem(icon: Icon(Icons.build), label: 'Maintain'),
+          BottomNavigationBarItem(icon: Icon(Icons.payment), label: 'Payment'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),

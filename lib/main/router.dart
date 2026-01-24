@@ -45,6 +45,8 @@ import '../security/booking_approval.dart';
 import '../security/maintenance_review.dart';
 import '../security/visitor_tracking.dart';
 import '../user/user_profile.dart';
+import '../payment/ui/payment_home.dart';
+import '../payment/ui/payment_history.dart';
 import 'account_removed.dart';
 import 'login_screen.dart';
 
@@ -90,6 +92,11 @@ final appRouter = GoRouter(
     return null;
   },
   routes: [
+    // Root path redirect
+    GoRoute(
+      path: '/',
+      redirect: (context, state) => '/login',
+    ),
     GoRoute(path: '/user/removed', builder: (c, s) => const AccountRemovedPage()),
     GoRoute(path: '/user/leaseExpired', builder: (c, s) => const LeaseExpiredPage()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
@@ -110,7 +117,15 @@ final appRouter = GoRouter(
       path: '/userprofile',
       builder: (context, state) => const UserProfilePage(),
     ),
-    // User routes
+    // User routes - Payment routes must come before /user to avoid path conflicts
+    GoRoute(
+      path: '/user/payment',
+      builder: (context, state) => const PaymentHomePage(),
+    ),
+    GoRoute(
+      path: '/user/paymentHistory',
+      builder: (context, state) => const PaymentHistoryPage(),
+    ),
     GoRoute(path: '/user', builder: (context, state) => const UserHome()),
     GoRoute(path: '/user/bookFacility', builder: (context, state) => const FacilityBookingPage()),
     GoRoute(path: '/user/maintenanceRequest', builder: (context, state) => const MaintenanceRequestPage()),
