@@ -237,6 +237,11 @@ class _SecurityHomeState extends State<SecurityHome> {
                           GoRouter.of(context).go('/security/qrScanner'),
                     ),
                     _ActionCard(
+                      icon: Icons.face,
+                      label: 'Face Access',
+                      onTap: () => GoRouter.of(context).push('/security/faceAccess'),
+                    ),
+                    _ActionCard(
                       icon: Icons.how_to_reg,
                       label: 'Approve Car Visitors',
                       onTap: () =>
