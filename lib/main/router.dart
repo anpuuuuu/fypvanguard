@@ -37,6 +37,9 @@ import '../admin/owner_approvals.dart';
 import '../admin/user_management.dart';
 import '../admin/analytics.dart';
 import '../admin/announcements.dart';
+import '../admin/maintenance_fee_management.dart';
+import '../admin/payment_history_admin.dart';
+import '../admin/maintenance_management.dart';
 
 // security screens
 import '../security/security_home.dart';
@@ -45,6 +48,7 @@ import '../security/booking_approval.dart';
 import '../security/maintenance_review.dart';
 import '../security/visitor_tracking.dart';
 import '../user/user_profile.dart';
+import '../payment/ui/payment_home.dart';
 import 'account_removed.dart';
 import 'login_screen.dart';
 
@@ -110,6 +114,10 @@ final appRouter = GoRouter(
       path: '/userprofile',
       builder: (context, state) => const UserProfilePage(),
     ),
+    GoRoute(
+      path: '/user/payment',
+      builder: (context, state) => const PaymentHomePage(),
+    ),
     // User routes
     GoRoute(path: '/user', builder: (context, state) => const UserHome()),
     GoRoute(path: '/user/bookFacility', builder: (context, state) => const FacilityBookingPage()),
@@ -170,6 +178,18 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/admin/feedback',
       builder: (context, state) => const AdminFeedbackInboxPage(),
+    ),
+    GoRoute(
+      path: '/admin/maintenanceFees',
+      builder: (context, state) => const MaintenanceFeeManagementPage(),
+    ),
+    GoRoute(
+      path: '/admin/paymentHistory',
+      builder: (context, state) => const AdminPaymentHistoryPage(),
+    ),
+    GoRoute(
+      path: '/admin/maintenance',
+      builder: (context, state) => const MaintenanceManagementPage(),
     ),
 
     // Security routes

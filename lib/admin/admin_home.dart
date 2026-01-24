@@ -197,7 +197,24 @@ class _AdminHomeState extends State<AdminHome> {
                       onTap: () =>
                           GoRouter.of(context).go('/admin/analytics'),
                     ),
-                    const SizedBox.shrink(),
+                    _ActionCard(
+                      icon: Icons.payment,
+                      label: 'Maintenance Fees',
+                      onTap: () =>
+                          GoRouter.of(context).go('/admin/maintenanceFees'),
+                    ),
+                    _ActionCard(
+                      icon: Icons.history,
+                      label: 'Payment History',
+                      onTap: () =>
+                          GoRouter.of(context).go('/admin/paymentHistory'),
+                    ),
+                    _ActionCard(
+                      icon: Icons.build,
+                      label: 'Maintenance',
+                      onTap: () =>
+                          GoRouter.of(context).go('/admin/maintenance'),
+                    ),
                   ],
                 ),
               ),

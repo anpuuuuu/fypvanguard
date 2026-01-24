@@ -260,6 +260,59 @@ class NotificationService {
     debugPrint('📢 Unsubscribed from topic: $topic');
   }
 
+  /// Send notification to a specific user by resident ID
+  Future<void> sendNotificationToUser(
+    String residentId,
+    String title,
+    String body, {
+    Map<String, String>? data,
+  }) async {
+    try {
+      // Get user's account ID from resident ID
+      final residentDoc = await FirebaseFirestore.instance
+          .collection('residents')
+          .doc(residentId)
+          .get();
+      
+      if (!residentDoc.exists) {
+        debugPrint('❌ Resident not found: $residentId');
+        return;
+      }
+
+      // Find account with this residentId
+      final accountsSnapshot = await FirebaseFirestore.instance
+          .collection('accounts')
+          .where('residentId', isEqualTo: residentId)
+          .limit(1)
+          .get();
+
+      if (accountsSnapshot.docs.isEmpty) {
+        debugPrint('❌ Account not found for resident: $residentId');
+        return;
+      }
+
+      final accountDoc = accountsSnapshot.docs.first;
+      final accountData = accountDoc.data();
+      final fcmTokens = accountData['fcmTokens'] as List<dynamic>? ?? [];
+
+      if (fcmTokens.isEmpty) {
+        debugPrint('❌ No FCM tokens found for resident: $residentId');
+        return;
+      }
+
+      // Send notification via Cloud Functions (recommended) or directly
+      // For now, we'll use Cloud Functions endpoint
+      // In production, you should call your Cloud Function
+      debugPrint('📩 Sending notification to resident $residentId: $title');
+      
+      // Note: In production, you should call your Cloud Function to send the notification
+      // This is a placeholder - the actual notification will be sent by Cloud Functions
+      // when the pendingFees document is created
+    } catch (e) {
+      debugPrint('❌ Failed to send notification: $e');
+    }
+  }
+
 
   /// 显示预订确认通知
   Future<void> showBookingConfirmedNotification({

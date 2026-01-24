@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
 
 import 'RegisterVisitorForm.dart';
 
@@ -21,6 +22,16 @@ class _EmergencyPageState extends State<EmergencyPage> {
   String? _managementNumber;
   String? _securityNumber;
   bool _loadingNumbers = true;
+  String _selectedEmergencyType = 'alert_guard';
+  
+  final List<Map<String, dynamic>> _emergencyTypes = [
+    {'type': 'alert_guard', 'label': 'Alert Security', 'icon': Icons.security, 'color': Colors.red},
+    {'type': 'fire', 'label': 'Fire Emergency', 'icon': Icons.local_fire_department, 'color': Colors.red},
+    {'type': 'medical', 'label': 'Medical Emergency', 'icon': Icons.medical_services, 'color': Colors.red},
+    {'type': 'break_in', 'label': 'Break-in/Suspicious', 'icon': Icons.warning, 'color': Colors.orange},
+    {'type': 'flood', 'label': 'Flood/Water Leak', 'icon': Icons.water_drop, 'color': Colors.blue},
+    {'type': 'power_outage', 'label': 'Power Outage', 'icon': Icons.power_off, 'color': Colors.grey},
+  ];
 
   @override
   void initState() {
@@ -49,30 +60,63 @@ class _EmergencyPageState extends State<EmergencyPage> {
     }
   }
 
-  Future<void> _alertGuardAndFamily() async {
+  Future<void> _sendEmergencyAlert(String type) async {
     setState(() => _sending = true);
     final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    
     try {
+      // Get resident info
+      final residentDoc = await FirebaseFirestore.instance
+          .collection('residents')
+          .doc(uid)
+          .get();
+      final residentData = residentDoc.data();
+      
       await FirebaseFirestore.instance.collection('emergencies').add({
         'residentId': uid,
+        'fullName': residentData?['fullName'] ?? 'Unknown',
+        'unitNumber': residentData?['unitNumber'] ?? 'Unknown',
+        'contactNumber': residentData?['contactNumber'] ?? 'Unknown',
         'timestamp': FieldValue.serverTimestamp(),
-        'type': 'alert_guard',
+        'type': type,
+        'status': 'pending',
+        'priority': type == 'fire' || type == 'medical' ? 'urgent' : 'high',
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Alert sent!', style: GoogleFonts.montserrat()),
-          backgroundColor: Colors.green.shade400,
-        ),
-      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Emergency alert sent! Help is on the way.',
+                    style: GoogleFonts.montserrat(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green.shade600,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to send alert: $e', style: GoogleFonts.montserrat()),
-          backgroundColor: Colors.red.shade300,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send alert: $e', style: GoogleFonts.montserrat()),
+            backgroundColor: Colors.red.shade300,
+          ),
+        );
+      }
     } finally {
-      setState(() => _sending = false);
+      if (mounted) {
+        setState(() => _sending = false);
+      }
     }
   }
 
@@ -139,36 +183,177 @@ class _EmergencyPageState extends State<EmergencyPage> {
         backgroundColor: Colors.red.shade700,
         centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
+      body: SingleChildScrollView(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _EmergencyButton(
-              icon: Icons.notifications_active,
-              label: 'Alert Guard',
-              color: Colors.red.shade700,
-              loading: _sending,
-              onPressed: _sending ? null : _alertGuardAndFamily,
+            // Emergency types section
+            Container(
+              padding: const EdgeInsets.all(20),
+              color: Colors.red.shade50,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.emergency, color: Colors.red.shade700, size: 28),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Emergency Alerts',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Select the type of emergency and send an alert',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            _EmergencyButton(
-              icon: Icons.call,
-              label: 'Call Management Office',
-              color: Colors.blue.shade700,
-              loading: _loadingNumbers,
-              onPressed: _managementNumber == null
-                  ? null
-                  : () => _callNumber(_managementNumber!),
-            ),
-            const SizedBox(height: 16),
-            _EmergencyButton(
-              icon: Icons.security,
-              label: 'Call Security',
-              color: Colors.blue.shade900,
-              loading: _loadingNumbers,
-              onPressed: _securityNumber == null
-                  ? null
-                  : () => _callNumber(_securityNumber!),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1.1,
+                    ),
+                    itemCount: _emergencyTypes.length,
+                    itemBuilder: (context, index) {
+                      final emergency = _emergencyTypes[index];
+                      final isSelected = _selectedEmergencyType == emergency['type'];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedEmergencyType = emergency['type'];
+                          });
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? emergency['color'].withOpacity(0.1)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected
+                                  ? emergency['color']
+                                  : Colors.grey[300]!,
+                              width: isSelected ? 2 : 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                emergency['icon'],
+                                size: 36,
+                                color: emergency['color'],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                emergency['label'],
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.montserrat(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey[900],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      icon: _sending
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.send, size: 24),
+                      label: Text(
+                        _sending ? 'Sending...' : 'Send Emergency Alert',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade700,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: _sending
+                          ? null
+                          : () => _sendEmergencyAlert(_selectedEmergencyType),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Divider(color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Quick Call',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[900],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _EmergencyButton(
+                    icon: Icons.call,
+                    label: 'Call Management Office',
+                    color: Colors.blue.shade700,
+                    loading: _loadingNumbers,
+                    onPressed: _managementNumber == null
+                        ? null
+                        : () => _callNumber(_managementNumber!),
+                  ),
+                  const SizedBox(height: 12),
+                  _EmergencyButton(
+                    icon: Icons.security,
+                    label: 'Call Security',
+                    color: Colors.blue.shade900,
+                    loading: _loadingNumbers,
+                    onPressed: _securityNumber == null
+                        ? null
+                        : () => _callNumber(_securityNumber!),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

@@ -335,6 +335,11 @@ class UserHomeState extends State<UserHome> {
                       onTap: () => GoRouter.of(context).go('/user/feedback'),
                     ),
                     _ActionCard(
+                      icon: Icons.payment,
+                      label: 'Payment',
+                      onTap: () => GoRouter.of(context).go('/user/payment'),
+                    ),
+                    _ActionCard(
                         icon: Icons.person,
                         label: 'Profile',
                         onTap: () =>

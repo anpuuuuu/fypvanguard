@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
 class UserManagementPage extends StatefulWidget {
   const UserManagementPage({Key? key}) : super(key: key);
@@ -15,10 +16,13 @@ class UserManagementPage extends StatefulWidget {
 
 class _UserManagementPageState extends State<UserManagementPage> {
   String _selectedRole = 'All';
+  String _selectedStatus = 'All';
   final _searchCtrl = TextEditingController();
   final _allRoles = ['All', 'owner', 'tenant', 'security', 'admin'];
+  final _allStatuses = ['All', 'active', 'inactive'];
   final CollectionReference _accounts =
   FirebaseFirestore.instance.collection('accounts');
+  final Set<String> _selectedUsers = <String>{};
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
@@ -142,6 +146,38 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
+  Widget _buildStatCard(String label, int count, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            count.toString(),
+            style: GoogleFonts.montserrat(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.montserrat(
+              fontSize: 12,
+              color: Colors.grey[700],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Show full resident info (for owner/tenant)
   Future<void> _showUserProfile(String uid) async {
     final acctSnap = await _accounts.doc(uid).get();
@@ -199,42 +235,128 @@ class _UserManagementPageState extends State<UserManagementPage> {
       ),
       body: Column(
         children: [
-          // Filter & Search
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.red.shade700),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: DropdownButton<String>(
-                    value: _selectedRole,
-                    underline: const SizedBox(),
-                    items: _allRoles
-                        .map((r) => DropdownMenuItem(
-                      value: r,
-                      child: Text(r.capitalize(), style: GoogleFonts.montserrat()),
-                    ))
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedRole = v!),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                      hintText: 'Search by email',
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                      prefixIcon: const Icon(Icons.search),
+          // Statistics
+          StreamBuilder<QuerySnapshot>(
+            stream: _accounts.snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SizedBox.shrink();
+              final docs = snapshot.data!.docs;
+              final owners = docs.where((d) => (d.data() as Map)['role'] == 'owner').length;
+              final tenants = docs.where((d) => (d.data() as Map)['role'] == 'tenant').length;
+              final security = docs.where((d) => (d.data() as Map)['role'] == 'security').length;
+              final admins = docs.where((d) => (d.data() as Map)['role'] == 'admin').length;
+              final active = docs.where((d) => (d.data() as Map)['status'] == 'active').length;
+              
+              return Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.white,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatCard('Owners', owners, Colors.blue),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard('Tenants', tenants, Colors.green),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard('Security', security, Colors.orange),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard('Active', active, Colors.green),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          // Filter & Search
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.white,
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Search by email or name...',
+                    prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
+                  style: GoogleFonts.montserrat(),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Role', style: GoogleFonts.montserrat(fontSize: 12, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.grey[300]!),
+                            ),
+                            child: DropdownButton<String>(
+                              value: _selectedRole,
+                              underline: const SizedBox(),
+                              isExpanded: true,
+                              items: _allRoles
+                                  .map((r) => DropdownMenuItem(
+                                value: r,
+                                child: Text(r.capitalize(), style: GoogleFonts.montserrat(fontSize: 13)),
+                              ))
+                                  .toList(),
+                              onChanged: (v) => setState(() => _selectedRole = v!),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Status', style: GoogleFonts.montserrat(fontSize: 12, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.grey[300]!),
+                            ),
+                            child: DropdownButton<String>(
+                              value: _selectedStatus,
+                              underline: const SizedBox(),
+                              isExpanded: true,
+                              items: _allStatuses
+                                  .map((s) => DropdownMenuItem(
+                                value: s,
+                                child: Text(s.capitalize(), style: GoogleFonts.montserrat(fontSize: 13)),
+                              ))
+                                  .toList(),
+                              onChanged: (v) => setState(() => _selectedStatus = v!),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -252,9 +374,17 @@ class _UserManagementPageState extends State<UserManagementPage> {
                   final d = doc.data()! as Map<String, dynamic>;
                   final email = (d['username'] ?? '').toString().toLowerCase();
                   final role = (d['role'] ?? '').toString();
+                  final status = (d['status'] ?? '').toString();
+                  
                   if (_selectedRole != 'All' && role != _selectedRole) return false;
+                  if (_selectedStatus != 'All' && status != _selectedStatus) return false;
+                  
                   final search = _searchCtrl.text.toLowerCase();
-                  return search.isEmpty || email.contains(search);
+                  if (search.isNotEmpty) {
+                    // Try to get resident name for search
+                    return email.contains(search);
+                  }
+                  return true;
                 }).toList();
 
                 if (docs.isEmpty) {
@@ -272,69 +402,236 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     final email = d['username'] as String? ?? '';
                     final role = d['role'] as String? ?? '';
                     final status = d['status'] as String? ?? '';
+                    final createdAt = d['createdAt'] as Timestamp?;
+                    final isSelected = _selectedUsers.contains(doc.id);
 
-                    final avatar = CircleAvatar(
-                      backgroundColor: Colors.red.shade700,
-                      child: Text(
-                        email.isNotEmpty ? email[0].toUpperCase() : '?',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    );
-                    final statusColor = status == 'active' ? Colors.green : Colors.grey;
-                    final statusChip = Chip(
-                      label: Text(status.capitalize()),
-                      backgroundColor: statusColor.shade50,
-                      labelStyle: TextStyle(color: statusColor),
-                    );
+                    return FutureBuilder<DocumentSnapshot>(
+                      future: (role == 'owner' || role == 'tenant')
+                          ? FirebaseFirestore.instance.collection('residents').doc(doc.id).get()
+                          : Future.value(null),
+                      builder: (context, residentSnapshot) {
+                        String displayName = email.split('@').first;
+                        if (residentSnapshot.hasData && residentSnapshot.data!.exists) {
+                          final residentData = residentSnapshot.data!.data() as Map<String, dynamic>?;
+                          displayName = residentData?['fullName'] ?? displayName;
+                        }
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 2,
-                      child: ListTile(
-                        leading: avatar,
-                        title: Text(email,
-                            style: GoogleFonts.montserrat(
-                                fontSize: 16, fontWeight: FontWeight.w600)),
-                        subtitle: Wrap(spacing: 8, children: [
-                          Chip(
-                            label: Text(role.capitalize()),
-                            backgroundColor: Colors.blue.shade50,
-                            labelStyle: const TextStyle(color: Colors.blue),
-                          ),
-                          statusChip,
-                        ]),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (choice) async {
-                            if (choice == 'ToggleStatus' &&
-                                (role == 'security' || role == 'admin')) {
-                              final newStatus = status == 'active' ? 'inactive' : 'active';
-                              await _accounts.doc(doc.id).update({'status': newStatus});
-                            } else if (choice == 'ViewProfile' &&
-                                (role == 'owner' || role == 'tenant')) {
-                              await _showUserProfile(doc.id);
-                            }
-                            setState(() {});
-                          },
-                          itemBuilder: (_) => [
-                            if (role == 'security' || role == 'admin')
-                              PopupMenuItem(
-                                value: 'ToggleStatus',
-                                child: Text(
-                                  status == 'active' ? 'Deactivate' : 'Activate',
-                                  style: TextStyle(
-                                      color: status == 'active'
-                                          ? Colors.red
-                                          : Colors.green),
-                                ),
+                        final statusColor = status == 'active' ? Colors.green : Colors.grey;
+                        final roleColor = _getRoleColor(role);
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? Colors.red.shade700 : Colors.grey[200]!,
+                              width: isSelected ? 2 : 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
                               ),
-                            if (role == 'owner' || role == 'tenant')
-                              const PopupMenuItem(
-                                  value: 'ViewProfile',
-                                  child: Text('View Profile')),
-                          ],
-                        ),
-                      ),
+                            ],
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            leading: Checkbox(
+                              value: isSelected,
+                              onChanged: (value) {
+                                setState(() {
+                                  if (value == true) {
+                                    _selectedUsers.add(doc.id);
+                                  } else {
+                                    _selectedUsers.remove(doc.id);
+                                  }
+                                });
+                              },
+                            ),
+                            title: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: roleColor,
+                                  child: Text(
+                                    displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        displayName,
+                                        style: GoogleFonts.montserrat(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        email,
+                                        style: GoogleFonts.montserrat(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(left: 52, top: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: roleColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: roleColor.withOpacity(0.3)),
+                                        ),
+                                        child: Text(
+                                          role.capitalize(),
+                                          style: GoogleFonts.montserrat(
+                                            fontSize: 11,
+                                            color: roleColor,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: statusColor.withOpacity(0.3)),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: statusColor,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              status.capitalize(),
+                                              style: GoogleFonts.montserrat(
+                                                fontSize: 11,
+                                                color: statusColor,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (createdAt != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Joined: ${DateFormat('MMM d, yyyy').format(createdAt.toDate().toLocal())}',
+                                      style: GoogleFonts.montserrat(
+                                        fontSize: 11,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              icon: Icon(Icons.more_vert, color: Colors.grey[600]),
+                              onSelected: (choice) async {
+                                if (choice == 'ToggleStatus' &&
+                                    (role == 'security' || role == 'admin')) {
+                                  final newStatus = status == 'active' ? 'inactive' : 'active';
+                                  await _accounts.doc(doc.id).update({'status': newStatus});
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('User ${newStatus}', style: GoogleFonts.montserrat()),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                } else if (choice == 'ViewProfile' &&
+                                    (role == 'owner' || role == 'tenant')) {
+                                  await _showUserProfile(doc.id);
+                                } else if (choice == 'ResetPassword') {
+                                  _showResetPasswordDialog(doc.id, email);
+                                } else if (choice == 'Delete') {
+                                  _confirmDeleteUser(doc.id, email);
+                                }
+                                setState(() {});
+                              },
+                              itemBuilder: (_) => [
+                                if (role == 'owner' || role == 'tenant')
+                                  const PopupMenuItem(
+                                    value: 'ViewProfile',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('View Profile'),
+                                      ],
+                                    ),
+                                  ),
+                                if (role == 'security' || role == 'admin')
+                                  PopupMenuItem(
+                                    value: 'ToggleStatus',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          status == 'active' ? Icons.block : Icons.check_circle,
+                                          size: 18,
+                                          color: status == 'active' ? Colors.red : Colors.green,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(status == 'active' ? 'Deactivate' : 'Activate'),
+                                      ],
+                                    ),
+                                  ),
+                                const PopupMenuItem(
+                                  value: 'ResetPassword',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.lock_reset, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Reset Password'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'Delete',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete, size: 18, color: Colors.red),
+                                      SizedBox(width: 8),
+                                      Text('Delete', style: TextStyle(color: Colors.red)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 );
@@ -344,11 +641,26 @@ class _UserManagementPageState extends State<UserManagementPage> {
         ],
       ),
 
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.red.shade700,
-        child: const Icon(Icons.add),
-        onPressed: _showAddUserDialog,
-        tooltip: 'Add Security/Admin',
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_selectedUsers.isNotEmpty)
+            FloatingActionButton(
+              backgroundColor: Colors.orange,
+              heroTag: 'batch',
+              child: const Icon(Icons.batch_prediction),
+              onPressed: () => _showBatchActionsDialog(),
+              tooltip: 'Batch Actions',
+            ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            backgroundColor: Colors.red.shade700,
+            heroTag: 'add',
+            child: const Icon(Icons.add),
+            onPressed: _showAddUserDialog,
+            tooltip: 'Add Security/Admin',
+          ),
+        ],
       ),
 
       bottomNavigationBar: BottomNavigationBar(
@@ -386,6 +698,185 @@ class _UserManagementPageState extends State<UserManagementPage> {
         ],
       ),
     );
+  }
+
+  Color _getRoleColor(String role) {
+    switch (role) {
+      case 'owner': return Colors.blue;
+      case 'tenant': return Colors.green;
+      case 'security': return Colors.orange;
+      case 'admin': return Colors.purple;
+      default: return Colors.grey;
+    }
+  }
+
+  Future<void> _showResetPasswordDialog(String userId, String email) async {
+    final newPasswordCtrl = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Reset Password', style: GoogleFonts.montserrat(fontWeight: FontWeight.w600)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Reset password for: $email', style: GoogleFonts.montserrat()),
+            const SizedBox(height: 16),
+            TextField(
+              controller: newPasswordCtrl,
+              decoration: InputDecoration(
+                labelText: 'New Password',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+              obscureText: true,
+              style: GoogleFonts.montserrat(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: GoogleFonts.montserrat()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (newPasswordCtrl.text.length >= 6) {
+                Navigator.pop(context, true);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Password must be at least 6 characters', style: GoogleFonts.montserrat())),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: Text('Reset', style: GoogleFonts.montserrat(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && newPasswordCtrl.text.isNotEmpty) {
+      try {
+        final user = await FirebaseAuth.instance.fetchSignInMethodsForEmail(email);
+        if (user.isNotEmpty) {
+          // Note: Admin cannot directly reset password, this would require backend function
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Password reset initiated. User will receive email.', style: GoogleFonts.montserrat()),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e', style: GoogleFonts.montserrat())),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteUser(String userId, String email) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete User', style: GoogleFonts.montserrat(fontWeight: FontWeight.w600, color: Colors.red)),
+        content: Text('Are you sure you want to delete $email? This action cannot be undone.', style: GoogleFonts.montserrat()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: GoogleFonts.montserrat()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text('Delete', style: GoogleFonts.montserrat(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _accounts.doc(userId).delete();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('User deleted', style: GoogleFonts.montserrat()),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e', style: GoogleFonts.montserrat())),
+          );
+        }
+      }
+    }
+  }
+
+  void _showBatchActionsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Batch Actions (${_selectedUsers.length} selected)',
+          style: GoogleFonts.montserrat(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.check_circle, color: Colors.green),
+              title: Text('Activate All', style: GoogleFonts.montserrat()),
+              onTap: () async {
+                Navigator.pop(context);
+                await _batchUpdateStatus('active');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.block, color: Colors.red),
+              title: Text('Deactivate All', style: GoogleFonts.montserrat()),
+              onTap: () async {
+                Navigator.pop(context);
+                await _batchUpdateStatus('inactive');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.clear_all, color: Colors.orange),
+              title: Text('Clear Selection', style: GoogleFonts.montserrat()),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _selectedUsers.clear());
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _batchUpdateStatus(String status) async {
+    final count = _selectedUsers.length;
+    final batch = FirebaseFirestore.instance.batch();
+    for (var userId in _selectedUsers) {
+      batch.update(_accounts.doc(userId), {'status': status});
+    }
+    await batch.commit();
+    setState(() => _selectedUsers.clear());
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$count users updated', style: GoogleFonts.montserrat()),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 }
 

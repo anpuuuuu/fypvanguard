@@ -25,9 +25,22 @@ class MaintenanceRequestPage extends StatefulWidget {
 class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
   final _service = MaintenanceService();
   final _descCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
   final _picker = ImagePicker();
   XFile? _imageFile;
   bool _isUploading = false;
+  String _selectedPriority = 'medium';
+  String _selectedCategory = 'general';
+  
+  final List<String> _priorities = ['low', 'medium', 'high', 'urgent'];
+  final List<String> _categories = [
+    'general',
+    'plumbing',
+    'electrical',
+    'hvac',
+    'structural',
+    'other'
+  ];
 
   Future<void> _pickFromCamera() async {
     final picked = await _picker.pickImage(
@@ -63,13 +76,21 @@ class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
         residentId: FirebaseAuth.instance.currentUser!.uid,
         description: desc,
         imageBase64: base64Img,
+        priority: _selectedPriority,
+        category: _selectedCategory,
+        location: _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Request submitted')),
+        const SnackBar(content: Text('Request submitted successfully')),
       );
       _descCtrl.clear();
-      setState(() => _imageFile = null);
+      _locationCtrl.clear();
+      setState(() {
+        _imageFile = null;
+        _selectedPriority = 'medium';
+        _selectedCategory = 'general';
+      });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
@@ -122,9 +143,59 @@ class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
     );
   }
 
+  String _getPriorityLabel(String priority) {
+    switch (priority) {
+      case 'urgent':
+        return 'Urgent';
+      case 'high':
+        return 'High';
+      case 'medium':
+        return 'Medium';
+      case 'low':
+        return 'Low';
+      default:
+        return priority;
+    }
+  }
+
+  String _getCategoryLabel(String category) {
+    switch (category) {
+      case 'plumbing':
+        return 'Plumbing';
+      case 'electrical':
+        return 'Electrical';
+      case 'hvac':
+        return 'HVAC';
+      case 'structural':
+        return 'Structural';
+      case 'general':
+        return 'General';
+      case 'other':
+        return 'Other';
+      default:
+        return category;
+    }
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority) {
+      case 'urgent':
+        return Colors.red;
+      case 'high':
+        return Colors.orange;
+      case 'medium':
+        return Colors.blue;
+      case 'low':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   void dispose() {
     _descCtrl.dispose();
+    _locationCtrl.dispose();
     super.dispose();
   }
 
@@ -157,9 +228,96 @@ class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
                 elevation: 2,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Priority Selection
+                      Text(
+                        'Priority',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: _priorities.map((priority) {
+                          final isSelected = _selectedPriority == priority;
+                          return FilterChip(
+                            label: Text(
+                              _getPriorityLabel(priority),
+                              style: GoogleFonts.montserrat(
+                                fontSize: 12,
+                                color: isSelected ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              setState(() => _selectedPriority = priority);
+                            },
+                            backgroundColor: Colors.grey[200],
+                            selectedColor: _getPriorityColor(priority),
+                            checkmarkColor: Colors.white,
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      // Category Selection
+                      Text(
+                        'Category',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: _selectedCategory,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.red.shade700),
+                          ),
+                        ),
+                        items: _categories.map((category) {
+                          return DropdownMenuItem(
+                            value: category,
+                            child: Text(
+                              _getCategoryLabel(category),
+                              style: GoogleFonts.montserrat(),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _selectedCategory = value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // Location (optional)
+                      TextField(
+                        controller: _locationCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Location (Optional)',
+                          hintText: 'e.g., Unit 101, Kitchen, Bathroom',
+                          labelStyle: GoogleFonts.montserrat(),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.red.shade700),
+                          ),
+                        ),
+                        style: GoogleFonts.montserrat(),
+                      ),
+                      const SizedBox(height: 16),
+                      // Description
                       TextField(
                         controller: _descCtrl,
                         decoration: InputDecoration(
@@ -173,7 +331,7 @@ class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
                             BorderSide(color: Colors.red.shade700),
                           ),
                         ),
-                        maxLines: 3,
+                        maxLines: 4,
                         style: GoogleFonts.montserrat(),
                       ),
                       const SizedBox(height: 12),
@@ -283,14 +441,16 @@ class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
                     itemBuilder: (context, i) {
                       final data = docs[i].data()! as Map<String, dynamic>;
                       final desc = data['description'] as String? ?? '';
-                      final status =
-                      (data['status'] as String).toLowerCase();
+                      final status = (data['status'] as String).toLowerCase();
+                      final priority = data['priority'] as String? ?? 'medium';
+                      final category = data['category'] as String? ?? 'general';
+                      final location = data['location'] as String?;
                       final ts = (data['createdAt'] as Timestamp?)
                           ?.toDate()
                           ?.toLocal();
                       final dateStr = ts == null
                           ? ''
-                          : DateFormat('dd MMM yyyy').format(ts);
+                          : DateFormat('dd MMM yyyy HH:mm').format(ts);
 
                       Icon icon;
                       Color color;
@@ -309,6 +469,32 @@ class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
                           icon = const Icon(Icons.hourglass_empty,
                               color: Colors.grey);
                           color = Colors.grey;
+                      }
+
+                      Color _getPriorityColor(String p) {
+                        switch (p) {
+                          case 'urgent': return Colors.red;
+                          case 'high': return Colors.orange;
+                          case 'medium': return Colors.blue;
+                          case 'low': return Colors.green;
+                          default: return Colors.grey;
+                        }
+                      }
+
+                      String _getPriorityLabel(String p) {
+                        return p.substring(0, 1).toUpperCase() + p.substring(1);
+                      }
+
+                      String _getCategoryLabel(String c) {
+                        switch (c) {
+                          case 'plumbing': return 'Plumbing';
+                          case 'electrical': return 'Electrical';
+                          case 'hvac': return 'HVAC';
+                          case 'structural': return 'Structural';
+                          case 'general': return 'General';
+                          case 'other': return 'Other';
+                          default: return c;
+                        }
                       }
 
                       final imageBase64 = data['imageBase64'] as String?;
@@ -364,22 +550,110 @@ class _MaintenanceRequestPageState extends State<MaintenanceRequestPage> {
                                   icon,
                                   const SizedBox(width: 8),
                                   Expanded(
-                                    child: Text(desc,
-                                        style: GoogleFonts.montserrat(
-                                            fontSize: 14)),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(desc,
+                                            style: GoogleFonts.montserrat(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w500)),
+                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: _getPriorityColor(priority).withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(
+                                                  color: _getPriorityColor(priority),
+                                                  width: 1,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                _getPriorityLabel(priority),
+                                                style: GoogleFonts.montserrat(
+                                                  fontSize: 10,
+                                                  color: _getPriorityColor(priority),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                _getCategoryLabel(category),
+                                                style: GoogleFonts.montserrat(
+                                                  fontSize: 10,
+                                                  color: Colors.blue[700],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-                              Text('Date: $dateStr',
-                                  style: GoogleFonts.montserrat(
-                                      fontSize: 12,
-                                      color: Colors.grey[700])),
-                              const SizedBox(height: 4),
-                              Text('Status: ${status.toUpperCase()}',
-                                  style: GoogleFonts.montserrat(
-                                      fontSize: 12, color: color)),
-                              if (thumb != null) thumb,
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
+                                  const SizedBox(width: 4),
+                                  Text('$dateStr',
+                                      style: GoogleFonts.montserrat(
+                                          fontSize: 11,
+                                          color: Colors.grey[700])),
+                                  const SizedBox(width: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      status.toUpperCase(),
+                                      style: GoogleFonts.montserrat(
+                                          fontSize: 10,
+                                          color: color,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (location != null && location.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
+                                    const SizedBox(width: 4),
+                                    Text('Location: $location',
+                                        style: GoogleFonts.montserrat(
+                                            fontSize: 11,
+                                            color: Colors.grey[700])),
+                                  ],
+                                ),
+                              ],
+                              if (thumb != null) ...[
+                                const SizedBox(height: 8),
+                                thumb,
+                              ],
                             ],
                           ),
                         ),
