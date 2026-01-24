@@ -305,6 +305,81 @@ class _UserProfilePageState extends State<UserProfilePage> {
     );
   }
 
+  // --- 人脸识别状态卡片 ---
+  Widget _buildFaceIdCard() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        bool isRegistered = false;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>?;
+          if (data != null && data['isFaceRegistered'] == true) {
+            isRegistered = true;
+          }
+        }
+
+        if (isRegistered) {
+          // 已注册状态
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            color: Colors.green.shade50, // 淡淡的绿色背景
+            child: ListTile(
+              leading: const Icon(Icons.check_circle, color: Colors.green, size: 32),
+              title: Text('Face ID Active', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+              subtitle: Text('Tap to re-register/reset', style: GoogleFonts.montserrat(fontSize: 12)),
+              trailing: const Icon(Icons.refresh, color: Colors.green),
+              onTap: () => _confirmResetFaceId(),
+            ),
+          );
+        } else {
+          // 未注册状态
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: Icon(Icons.face, color: Colors.red.shade700),
+              title: Text('Setup Face ID', style: GoogleFonts.montserrat(fontWeight: FontWeight.w600)),
+              subtitle: Text('Enable face recognition for gate access', style: GoogleFonts.montserrat(fontSize: 12)),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () => GoRouter.of(context).push('/user/faceRegistration'),
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  void _confirmResetFaceId() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Reset Face ID?', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
+        content: Text(
+          'This will overwrite your existing face data. You will need to complete the face verification process again.',
+          style: GoogleFonts.montserrat(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              GoRouter.of(context).push('/user/faceRegistration'); // 直接跳转，新数据会自动覆盖
+            },
+            child: const Text('Re-register', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -353,11 +428,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
             _buildReadOnlyCard('Email', _email),
             const SizedBox(height: 16),
             _buildReadOnlyCard('Unit Number', _unitNumber),
-if (_role == 'owner') ...[
-        const SizedBox(height: 16),
-         _buildProofCard(),
-        ],
+            if (_role == 'owner') ...[
+              const SizedBox(height: 16),
+              _buildProofCard(),
+            ],
             const SizedBox(height: 16),
+            
             // Change Password
             Card(
               elevation: 2,
@@ -368,6 +444,10 @@ if (_role == 'owner') ...[
                 onTap: _showChangePasswordDialog,
               ),
             ),
+            const SizedBox(height: 16),
+            
+            // --- Face ID Card (智能状态) ---
+            _buildFaceIdCard(),
           ],
         ),
       ),

@@ -28,7 +28,9 @@ import '../user/user_home.dart';
 import '../user/facility_booking.dart';
 import '../user/maintenance_request.dart';
 import '../user/RegisterVisitorForm.dart';
+import '../user/face_registration_page.dart';
 import '../user/visitor_qr_page.dart';
+import 'package:vanguardfyp/security/face_access_page.dart';
 import '../security/qr_scanner_page.dart';
 
 // admin screens
@@ -110,6 +112,10 @@ final appRouter = GoRouter(
       path: '/userprofile',
       builder: (context, state) => const UserProfilePage(),
     ),
+    GoRoute(
+      path: '/user/faceRegistration',
+      builder: (context, state) => const FaceRegistrationPage(),
+    ),
     // User routes
     GoRoute(path: '/user', builder: (context, state) => const UserHome()),
     GoRoute(path: '/user/bookFacility', builder: (context, state) => const FacilityBookingPage()),
@@ -175,6 +181,7 @@ final appRouter = GoRouter(
     // Security routes
     GoRoute(path: '/security', builder: (context, state) => const SecurityHome()),
     GoRoute(path: '/security/qrScanner', builder: (context, state) => const QrScannerPage()),
+    GoRoute(path: '/security/faceAccess', builder: (context, state) => const FaceAccessPage()),
     GoRoute(path: '/security/visitorApproval', builder: (context, state) => const VisitorApprovalPage()),
     GoRoute(path: '/security/visitorTracking', builder: (context, state) => const VisitorTrackingPage()),
     GoRoute(path: '/security/bookingApproval', builder: (context, state) => const BookingApprovalPage()),
