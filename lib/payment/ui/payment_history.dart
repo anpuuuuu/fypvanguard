@@ -85,7 +85,11 @@ class _PaymentHistoryPageState extends State<PaymentHistoryPage> {
               ],
               if (transaction.receiptId != null) ...[
                 const Divider(),
-                _buildDetailRow('Receipt ID', transaction.receiptId!),
+                _buildDetailRow('Receipt', transaction.receiptId!),
+              ],
+              if (transaction.invoiceId != null) ...[
+                const Divider(),
+                _buildDetailRow('Invoice ID', transaction.invoiceId!),
               ],
               if (transaction.description != null)
                 _buildDetailRow('Description', transaction.description!),

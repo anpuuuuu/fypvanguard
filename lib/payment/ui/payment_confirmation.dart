@@ -48,7 +48,9 @@ class _PaymentConfirmationPageState extends State<PaymentConfirmationPage> {
       case PaymentMethod.stripe:
         return 'Credit/Debit Card';
       case PaymentMethod.paypal:
-        return 'PayPal';
+        return 'PayPal Sandbox (Card)';
+      case PaymentMethod.paypalAccount:
+        return 'Pay with PayPal (Sandbox account)';
     }
   }
 

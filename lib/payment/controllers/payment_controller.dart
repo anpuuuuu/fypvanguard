@@ -4,9 +4,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/transaction_model.dart';
+import '../models/invoice_model.dart';
 import '../services/blockchain_service.dart';
 import '../services/payment_gateway_service.dart';
 import '../services/payment_type_service.dart';
+import '../services/wallet_service.dart';
 
 /// Payment controller
 class PaymentController {
@@ -15,9 +17,10 @@ class PaymentController {
   final BlockchainService _blockchainService = BlockchainService();
   final PaymentGatewayService _paymentGatewayService = PaymentGatewayService();
 
-  /// Initialize services
+  /// Initialize services (BlockchainService loads rpcUrl; WalletService loads managementWalletAddress from Firestore for cross-PC testing).
   Future<void> initialize() async {
     await _blockchainService.initialize();
+    await WalletService.initialize();
     await _paymentGatewayService.initialize();
   }
 
@@ -133,16 +136,18 @@ class PaymentController {
     }
   }
 
-  /// Process traditional payment (Stripe)
+  /// Process PayPal Sandbox payment (card) - no real charge, valid card only
   /// [amount] - Payment amount
   /// [feeType] - Fee type (for transaction record)
   /// [feeTypeKey] - Fee type key string for matching pending fees
-  /// [paymentMethodId] - Stripe payment method ID
+  /// [feeTypeName] - Display name for invoice
+  /// [paymentMethodId] - Payment method ID (from card form)
   /// [description] - Payment description
-  Future<Transaction> processStripePayment({
+  Future<Transaction> processPayPalPayment({
     required double amount,
     required FeeType feeType,
     String? feeTypeKey,
+    required String feeTypeName,
     required String paymentMethodId,
     String? description,
   }) async {
@@ -151,89 +156,229 @@ class PaymentController {
       throw Exception('User not authenticated');
     }
 
-    // Get user information
     final accountDoc = await _firestore
         .collection('accounts')
         .doc(user.uid)
         .get();
     final accountData = accountDoc.data();
     final residentId = accountData?['residentId'] as String? ?? user.uid;
+    final feeTypeStr = feeTypeKey ?? feeType.toString().split('.').last;
 
-    // Create payment intent
-    final paymentIntent = await _paymentGatewayService.createPaymentIntent(
+    // Create order (PayPal Sandbox simulated)
+    final order = await _paymentGatewayService.createOrder(
       amount: amount,
-      currency: 'MYR', // Malaysian Ringgit, can be modified as needed
+      currency: 'MYR',
       metadata: {
         'userId': user.uid,
         'residentId': residentId,
-        'feeType': feeType.toString().split('.').last,
+        'feeType': feeTypeStr,
       },
     );
+    final orderId = order['id'] as String;
 
-    final paymentIntentId = paymentIntent['id'] as String;
-
-    // Create pending transaction record
+    // Create pending transaction
     final transaction = Transaction(
       userId: user.uid,
       residentId: residentId,
       amount: amount,
       feeType: feeType,
-      paymentMethod: PaymentMethod.stripe,
+      paymentMethod: PaymentMethod.paypal,
       status: TransactionStatus.pending,
       createdAt: DateTime.now(),
-      paymentIntentId: paymentIntentId,
+      paymentIntentId: orderId,
       description: description,
     );
 
-    // Save to Firestore
     final docRef = await _firestore
         .collection('transactions')
         .add(transaction.toFirestore());
 
     try {
-      // Update status to processing
       await docRef.update({
         'status': TransactionStatus.processing.toString().split('.').last,
       });
 
-      // Confirm payment
-      await _paymentGatewayService.confirmPayment(
-        paymentIntentId: paymentIntentId,
+      await _paymentGatewayService.captureOrder(
+        orderId: orderId,
         paymentMethodId: paymentMethodId,
       );
 
-      // Get payment status
-      final paymentStatus = await _paymentGatewayService.getPaymentStatus(
-        paymentIntentId,
+      final paymentStatus = await _paymentGatewayService.getPaymentStatus(orderId);
+      final status = paymentStatus['status'] as String;
+      final isSucceeded = status == 'COMPLETED';
+      final receiptUrl = paymentStatus['receipt_url'] as String?;
+
+      if (!isSucceeded) {
+        await docRef.update({
+          'status': TransactionStatus.failed.toString().split('.').last,
+        });
+        throw Exception('PayPal sandbox payment did not complete');
+      }
+
+      // Create invoice and get invoice number
+      final invoice = await _createInvoice(
+        userId: user.uid,
+        residentId: residentId,
+        transactionId: docRef.id,
+        amount: amount,
+        feeType: feeTypeStr,
+        feeTypeName: feeTypeName,
+        description: description,
       );
 
-      final status = paymentStatus['status'] as String;
-      final isSucceeded = status == 'succeeded';
-
-      // Update transaction record
       await docRef.update({
-        'status': isSucceeded
-            ? TransactionStatus.completed.toString().split('.').last
-            : TransactionStatus.failed.toString().split('.').last,
-        'receiptId': paymentStatus['charges']?['data']?[0]?['receipt_url'] as String?,
+        'status': TransactionStatus.completed.toString().split('.').last,
+        'receiptId': receiptUrl,
         'completedAt': FieldValue.serverTimestamp(),
+        'invoiceId': invoice.id,
       });
 
-      // Mark pending fees as paid (if any)
-      final updatedDoc = await docRef.get();
-      final transaction = Transaction.fromFirestore(updatedDoc);
-      final feeTypeStr = feeTypeKey ?? feeType.toString().split('.').last;
-      await _markPendingFeesAsPaid(residentId, feeTypeStr, amount, transaction.id);
+      await _markPendingFeesAsPaid(residentId, feeTypeStr, amount, docRef.id);
 
-      // Return updated transaction
-      return transaction;
+      final updatedDoc = await docRef.get();
+      return Transaction.fromFirestore(updatedDoc);
     } catch (e) {
-      // Update to failed status
       await docRef.update({
         'status': TransactionStatus.failed.toString().split('.').last,
       });
-      throw Exception('Stripe payment failed: $e');
+      throw Exception('PayPal payment failed: $e');
     }
+  }
+
+  /// Create invoice after successful payment; stored in Firestore for email trigger
+  Future<Invoice> _createInvoice({
+    required String userId,
+    required String residentId,
+    required String transactionId,
+    required double amount,
+    required String feeType,
+    required String feeTypeName,
+    String? description,
+  }) async {
+    final now = DateTime.now();
+    final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final unique = now.millisecondsSinceEpoch % 10000;
+    final invoiceNumber = 'INV-$dateStr-${unique.toString().padLeft(4, '0')}';
+
+    final invoice = Invoice(
+      userId: userId,
+      residentId: residentId,
+      transactionId: transactionId,
+      amount: amount,
+      feeType: feeType,
+      feeTypeName: feeTypeName,
+      description: description,
+      createdAt: now,
+      invoiceNumber: invoiceNumber,
+      emailSent: false,
+    );
+
+    final invoiceRef = await _firestore
+        .collection('invoices')
+        .add(invoice.toFirestore());
+
+    return Invoice(
+      id: invoiceRef.id,
+      userId: invoice.userId,
+      residentId: invoice.residentId,
+      transactionId: invoice.transactionId,
+      amount: invoice.amount,
+      feeType: invoice.feeType,
+      feeTypeName: invoice.feeTypeName,
+      description: invoice.description,
+      createdAt: invoice.createdAt,
+      invoiceNumber: invoice.invoiceNumber,
+      emailSent: invoice.emailSent,
+    );
+  }
+
+  /// Get invoices for user (past invoices). Sorted in memory to avoid composite index.
+  Stream<List<Invoice>> getInvoices(String userId) {
+    return _firestore
+        .collection('invoices')
+        .where('userId', isEqualTo: userId)
+        .snapshots()
+        .map((snapshot) {
+          final list = snapshot.docs
+              .map((doc) => Invoice.fromFirestore(doc))
+              .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        });
+  }
+
+  /// Get recent invoices (e.g. last 5) for payment page. Sorted in memory to avoid composite index.
+  Future<List<Invoice>> getRecentInvoices(String userId, {int limit = 5}) async {
+    final snapshot = await _firestore
+        .collection('invoices')
+        .where('userId', isEqualTo: userId)
+        .get();
+    final list = snapshot.docs
+        .map((doc) => Invoice.fromFirestore(doc))
+        .toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list.take(limit).toList();
+  }
+
+  /// Get single invoice by id
+  Future<Invoice?> getInvoice(String invoiceId) async {
+    final doc = await _firestore.collection('invoices').doc(invoiceId).get();
+    if (!doc.exists) return null;
+    return Invoice.fromFirestore(doc);
+  }
+
+  /// Complete payment after PayPal sandbox order capture (user approved in PayPal).
+  /// Creates transaction + invoice and marks pending fees paid.
+  /// [feeTypeKey] - e.g. 'maintenanceFee', 'managementFee'
+  Future<Transaction> completePayPalPaymentFromCapture({
+    required String userId,
+    required String residentId,
+    required double amount,
+    required String feeTypeKey,
+    required String feeTypeName,
+    required String orderId,
+    String? description,
+  }) async {
+    final feeType = FeeType.values.firstWhere(
+      (e) => e.toString().split('.').last == feeTypeKey,
+      orElse: () => FeeType.other,
+    );
+    final transaction = Transaction(
+      userId: userId,
+      residentId: residentId,
+      amount: amount,
+      feeType: feeType,
+      paymentMethod: PaymentMethod.paypal,
+      status: TransactionStatus.completed,
+      createdAt: DateTime.now(),
+      completedAt: DateTime.now(),
+      paymentIntentId: orderId,
+      receiptId: 'https://www.sandbox.paypal.com/checkoutnow?token=$orderId',
+      description: description,
+    );
+
+    final docRef = await _firestore
+        .collection('transactions')
+        .add(transaction.toFirestore());
+
+    final invoice = await _createInvoice(
+      userId: userId,
+      residentId: residentId,
+      transactionId: docRef.id,
+      amount: amount,
+      feeType: feeTypeKey,
+      feeTypeName: feeTypeName,
+      description: description,
+    );
+
+    await docRef.update({
+      'invoiceId': invoice.id,
+    });
+
+    await _markPendingFeesAsPaid(residentId, feeTypeKey, amount, docRef.id);
+
+    final updatedDoc = await docRef.get();
+    return Transaction.fromFirestore(updatedDoc);
   }
 
   /// Mark pending fees as paid when payment is completed

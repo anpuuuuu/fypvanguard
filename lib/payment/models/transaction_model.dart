@@ -5,9 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Payment method enumeration
 enum PaymentMethod {
-  blockchain, // Blockchain payment
-  stripe,    // Stripe payment
-  paypal,    // PayPal payment (reserved)
+  blockchain,   // Blockchain payment
+  stripe,       // Stripe payment
+  paypal,       // PayPal card (form)
+  paypalAccount, // PayPal sandbox account (login on PayPal)
 }
 
 /// Transaction status enumeration
@@ -46,8 +47,9 @@ class Transaction {
   final int? blockNumber;         // Block number
   
   // Traditional payment related fields
-  final String? receiptId;        // Stripe receipt ID
-  final String? paymentIntentId;   // Stripe payment intent ID
+  final String? receiptId;        // Receipt URL (Stripe/PayPal)
+  final String? paymentIntentId; // Payment intent / order ID
+  final String? invoiceId;       // Invoice document ID (for PayPal/card payments)
   
   // Metadata
   final String? description;
@@ -69,6 +71,7 @@ class Transaction {
     this.blockNumber,
     this.receiptId,
     this.paymentIntentId,
+    this.invoiceId,
     this.description,
     this.metadata,
   });
@@ -103,6 +106,7 @@ class Transaction {
       blockNumber: data['blockNumber'] as int?,
       receiptId: data['receiptId'] as String?,
       paymentIntentId: data['paymentIntentId'] as String?,
+      invoiceId: data['invoiceId'] as String?,
       description: data['description'] as String?,
       metadata: data['metadata'] as Map<String, dynamic>?,
     );
@@ -125,6 +129,7 @@ class Transaction {
       if (blockNumber != null) 'blockNumber': blockNumber,
       if (receiptId != null) 'receiptId': receiptId,
       if (paymentIntentId != null) 'paymentIntentId': paymentIntentId,
+      if (invoiceId != null) 'invoiceId': invoiceId,
       if (description != null) 'description': description,
       if (metadata != null) 'metadata': metadata,
     };
@@ -152,7 +157,9 @@ class Transaction {
       case PaymentMethod.stripe:
         return 'Credit/Debit Card';
       case PaymentMethod.paypal:
-        return 'PayPal';
+        return 'PayPal (Sandbox)';
+      case PaymentMethod.paypalAccount:
+        return 'PayPal Account';
     }
   }
 
@@ -189,6 +196,7 @@ class Transaction {
     int? blockNumber,
     String? receiptId,
     String? paymentIntentId,
+    String? invoiceId,
     String? description,
     Map<String, dynamic>? metadata,
   }) {
@@ -208,6 +216,7 @@ class Transaction {
       blockNumber: blockNumber ?? this.blockNumber,
       receiptId: receiptId ?? this.receiptId,
       paymentIntentId: paymentIntentId ?? this.paymentIntentId,
+      invoiceId: invoiceId ?? this.invoiceId,
       description: description ?? this.description,
       metadata: metadata ?? this.metadata,
     );

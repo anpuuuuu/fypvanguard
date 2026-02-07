@@ -1,136 +1,59 @@
 // lib/payment/services/payment_gateway_service.dart
-// Traditional payment gateway service - Stripe integration (simplified version)
+// PayPal Sandbox payment gateway - simulated, no real money deducted
 
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-
-/// Payment gateway service
-/// Uses Stripe as traditional payment method
-/// Note: This is a simplified implementation, production environment requires backend API support
+/// Payment gateway service - PayPal Sandbox (simulated).
+/// All valid card formats are accepted; no real charge is made.
+/// Simulates create order -> capture flow and always returns success.
 class PaymentGatewayService {
-  // Note: In production environment, these should be retrieved from environment variables or secure configuration
-  // Here using test keys, need to replace with your Stripe keys in actual use
-  static const String _stripePublishableKey = 'pk_test_your_publishable_key';
-  static const String _stripeSecretKey = 'sk_test_your_secret_key';
-  static const String _stripeApiUrl = 'https://api.stripe.com/v1';
-
   bool _initialized = false;
 
-  /// Initialize Stripe
+  /// Initialize PayPal Sandbox (simulated - no real API keys required for demo)
   Future<void> initialize() async {
     if (_initialized) return;
-    
-    // Note: In actual applications, Stripe initialization should be completed at app startup
-    // Here only marks as initialized
     _initialized = true;
   }
 
-  /// Create payment intent (via backend API)
-  /// Note: This is a virtual payment - always returns success for testing
-  /// In production, should call your backend API to create payment intent
-  Future<Map<String, dynamic>> createPaymentIntent({
+  /// Create order (simulated) - no real API call, just loading simulation
+  Future<Map<String, dynamic>> createOrder({
     required double amount,
     required String currency,
     Map<String, dynamic>? metadata,
   }) async {
-    // Virtual payment - always return success
-    // In production, this would call the actual Stripe API or your backend
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate API call
-    
+    await Future.delayed(const Duration(milliseconds: 600));
+    final orderId = 'PAYPAL_${DateTime.now().millisecondsSinceEpoch}';
     return {
-      'id': 'pi_virtual_${DateTime.now().millisecondsSinceEpoch}',
-      'client_secret': 'pi_virtual_secret_${DateTime.now().millisecondsSinceEpoch}',
-      'status': 'requires_payment_method',
-      'amount': (amount * 100).toInt(),
+      'id': orderId,
+      'status': 'CREATED',
+      'amount': amount,
       'currency': currency.toLowerCase(),
+      'metadata': metadata,
     };
   }
 
-  /// Confirm payment
-  /// [paymentIntentId] - Payment intent ID
-  /// [paymentMethodId] - Payment method ID (collected from Stripe)
-  /// Note: This is a virtual payment - always returns success for testing
-  Future<Map<String, dynamic>> confirmPayment({
-    required String paymentIntentId,
+  /// Capture / confirm payment (simulated) - valid card always succeeds
+  Future<Map<String, dynamic>> captureOrder({
+    required String orderId,
     required String paymentMethodId,
   }) async {
-    // Virtual payment - always return success
-    // In production, this would call the actual Stripe API
-    await Future.delayed(const Duration(seconds: 1)); // Simulate processing time
-    
+    await Future.delayed(const Duration(seconds: 1));
     return {
-      'id': paymentIntentId,
-      'status': 'succeeded',
-      'charges': {
-        'data': [
-          {
-            'id': 'ch_virtual_${DateTime.now().millisecondsSinceEpoch}',
-            'status': 'succeeded',
-            'receipt_url': 'https://pay.stripe.com/receipts/virtual_$paymentIntentId',
-            'amount': 0, // Virtual payment
-            'currency': 'myr',
-          }
-        ]
-      }
+      'id': orderId,
+      'status': 'COMPLETED',
+      'captureId': 'CAP_${DateTime.now().millisecondsSinceEpoch}',
+      'receipt_url':
+          'https://www.sandbox.paypal.com/receipt/order/$orderId',
     };
   }
 
-  /// Get payment status
-  /// Note: This is a virtual payment - always returns succeeded status
-  Future<Map<String, dynamic>> getPaymentStatus(String paymentIntentId) async {
-    // Virtual payment - always return succeeded
-    await Future.delayed(const Duration(milliseconds: 300)); // Simulate API call
-    
+  /// Get payment status (simulated - always completed for sandbox)
+  Future<Map<String, dynamic>> getPaymentStatus(String orderId) async {
+    await Future.delayed(const Duration(milliseconds: 300));
     return {
-      'id': paymentIntentId,
-      'status': 'succeeded',
-      'charges': {
-        'data': [
-          {
-            'id': 'ch_virtual_${DateTime.now().millisecondsSinceEpoch}',
-            'status': 'succeeded',
-            'receipt_url': 'https://pay.stripe.com/receipts/virtual_$paymentIntentId',
-            'amount': 0, // Virtual payment
-            'currency': 'myr',
-          }
-        ]
-      }
+      'id': orderId,
+      'status': 'COMPLETED',
+      'captureId': 'CAP_${orderId}_${DateTime.now().millisecondsSinceEpoch}',
+      'receipt_url': 'https://www.sandbox.paypal.com/receipt/order/$orderId',
     };
-  }
-
-  /// Create refund
-  /// [paymentIntentId] - Payment intent ID
-  /// [amount] - Refund amount (optional, if not provided then full refund)
-  Future<Map<String, dynamic>> createRefund({
-    required String paymentIntentId,
-    double? amount,
-  }) async {
-    try {
-      final body = <String, String>{
-        'payment_intent': paymentIntentId,
-      };
-      
-      if (amount != null) {
-        body['amount'] = (amount * 100).toInt().toString();
-      }
-
-      final response = await http.post(
-        Uri.parse('$_stripeApiUrl/refunds'),
-        headers: {
-          'Authorization': 'Bearer $_stripeSecretKey',
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body,
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to create refund: ${response.body}');
-      }
-    } catch (e) {
-      throw Exception('Refund creation failed: $e');
-    }
   }
 
   /// Validate payment amount format

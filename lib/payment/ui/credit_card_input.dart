@@ -4,9 +4,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import '../models/transaction_model.dart';
 import '../controllers/payment_controller.dart';
+import '../utils/card_validator.dart';
 import 'payment_3d_secure.dart';
 
 class CreditCardInputPage extends StatefulWidget {
@@ -66,21 +66,30 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
     setState(() => _isProcessing = true);
 
     try {
-      // Create payment method ID (in real app, this would be done via Stripe SDK)
-      // For now, we'll simulate it
       final cardNumber = _cardNumberController.text.replaceAll(' ', '');
-      final expiryMonth = int.parse(_expiryMonthController.text);
-      final expiryYear = int.parse(_expiryYearController.text);
-      final cvv = _cardNumberController.text;
+      final expiryMonth = int.tryParse(_expiryMonthController.text);
+      final expiryYear = int.tryParse(_expiryYearController.text);
+      if (expiryMonth == null || expiryYear == null) {
+        _showError('Invalid expiry date');
+        setState(() => _isProcessing = false);
+        return;
+      }
+      if (!isValidExpiry(expiryMonth, expiryYear)) {
+        _showError('Card expiry must be a future date');
+        setState(() => _isProcessing = false);
+        return;
+      }
+      if (!isValidCvv(_cvvController.text)) {
+        _showError('Invalid CVV (3 or 4 digits)');
+        setState(() => _isProcessing = false);
+        return;
+      }
 
-      // Simulate payment method creation
-      final paymentMethodId = 'pm_${DateTime.now().millisecondsSinceEpoch}';
+      final paymentMethodId = 'paypal_card_${DateTime.now().millisecondsSinceEpoch}';
 
-      // Check if 3D Secure is required (simulate based on card number)
       final requires3DSecure = _requires3DSecure(cardNumber);
 
       if (requires3DSecure) {
-        // Navigate to 3D Secure page
         final result = await Navigator.push(
           context,
           MaterialPageRoute(
@@ -88,30 +97,27 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
               amount: widget.amount,
               feeType: widget.feeType,
               feeTypeKey: widget.feeTypeKey,
+              feeTypeName: widget.feeTypeName,
               description: widget.description,
               paymentMethodId: paymentMethodId,
             ),
           ),
         );
 
-        if (result == true) {
-          // 3D Secure successful, payment already processed
-          if (mounted) {
-            Navigator.pop(context, true);
-          }
+        if (result == true && mounted) {
+          Navigator.pop(context, true);
           return;
         } else {
-          // 3D Secure failed or cancelled
           setState(() => _isProcessing = false);
           _showError('Payment authentication failed. Please try again.');
           return;
         }
       } else {
-        // Process payment directly without 3D Secure
-        final transaction = await _controller.processStripePayment(
+        final transaction = await _controller.processPayPalPayment(
           amount: widget.amount,
           feeType: widget.feeType,
           feeTypeKey: widget.feeTypeKey,
+          feeTypeName: widget.feeTypeName,
           paymentMethodId: paymentMethodId,
           description: widget.description,
         );
@@ -120,7 +126,7 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
           Navigator.pop(context, true);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Payment successful! Transaction ID: ${transaction.id}'),
+              content: Text('Payment successful! Invoice will be sent to your email. Transaction: ${transaction.id}'),
               backgroundColor: Colors.green,
             ),
           );
@@ -136,8 +142,7 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
   }
 
   bool _requires3DSecure(String cardNumber) {
-    // Simulate 3D Secure requirement (in real app, Stripe would determine this)
-    // Cards starting with 4000 typically require 3D Secure in test mode
+    // Simulate 3D Secure for some test cards (PayPal sandbox style)
     return cardNumber.startsWith('4000') || cardNumber.startsWith('4242');
   }
 
@@ -284,9 +289,8 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
                   if (value == null || value.isEmpty) {
                     return 'Please enter card number';
                   }
-                  final digitsOnly = value.replaceAll(' ', '');
-                  if (digitsOnly.length < 13 || digitsOnly.length > 19) {
-                    return 'Invalid card number';
+                  if (!isValidCardNumber(value)) {
+                    return 'Invalid card number (use a valid format, e.g. 4012888888881881)';
                   }
                   return null;
                 },
@@ -396,8 +400,10 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
                               return 'Required';
                             }
                             final year = int.tryParse(value);
-                            if (year == null || year < DateTime.now().year) {
-                              return 'Invalid';
+                            final month = int.tryParse(_expiryMonthController.text);
+                            if (year == null || month == null) return 'Invalid';
+                            if (!isValidExpiry(month, year)) {
+                              return 'Must be future date';
                             }
                             return null;
                           },
@@ -437,8 +443,8 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
                             if (value == null || value.isEmpty) {
                               return 'Required';
                             }
-                            if (value.length < 3 || value.length > 4) {
-                              return 'Invalid';
+                            if (!isValidCvv(value)) {
+                              return '3 or 4 digits';
                             }
                             return null;
                           },

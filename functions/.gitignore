@@ -13,3 +13,6 @@ lib/
 
 # Local config
 *.local
+
+# PayPal credentials (optional: add paypalConfig.ts here if you don't want to commit it)
+# paypalConfig.ts

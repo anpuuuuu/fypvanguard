@@ -3,82 +3,49 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import '../services/blockchain_service.dart';
 
-/// Pre-configured Ganache accounts from the screenshot
-/// These are test accounts with 100 ETH each
-class PreconfiguredAccount {
-  final String address;
-  final String privateKey;
-  final int index;
-  final String balance;
-
-  PreconfiguredAccount({
-    required this.address,
-    required this.privateKey,
-    required this.index,
-    required this.balance,
-  });
-}
-
-/// Wallet service for managing blockchain accounts
+/// Wallet service for managing blockchain accounts (format, validate, balance).
+/// Recipient address for payment is set in blockchain_payment_page.dart (kRecipientAddress) for easy presentation.
 class WalletService {
   static final WalletService _instance = WalletService._internal();
   factory WalletService() => _instance;
   WalletService._internal();
 
-  /// Pre-configured accounts from Ganache (from screenshot)
-  /// These are test accounts that can be used directly
-  /// Updated to match the actual Ganache accounts shown in the screenshot
-  static final List<PreconfiguredAccount> preconfiguredAccounts = [
-    PreconfiguredAccount(
-      address: '0xCF09Ee496E515d685efE356ED1C39097feA26CD4',
-      privateKey: '', // User needs to get this from Ganache (click key icon)
-      index: 0,
-      balance: '100.00 ETH',
-    ),
-    PreconfiguredAccount(
-      address: '0xc69C6bd2bD8CD133DFa0bF492c9261C83BDF852a',
-      privateKey: '', // User needs to get this from Ganache (click key icon)
-      index: 1,
-      balance: '100.00 ETH',
-    ),
-    PreconfiguredAccount(
-      address: '0x86eC428176911F985A2200915cddADFe84471ccd',
-      privateKey: '', // User needs to get this from Ganache (click key icon)
-      index: 2,
-      balance: '100.00 ETH',
-    ),
-    PreconfiguredAccount(
-      address: '0x26E23EfA19E8996E5Eefd85022deD5e2FC9FFd9E',
-      privateKey: '', // User needs to get this from Ganache (click key icon)
-      index: 3,
-      balance: '100.00 ETH',
-    ),
-    PreconfiguredAccount(
-      address: '0x9a8C9F1B5ef76aFa1f4b74820ba101B46f09A450',
-      privateKey: '', // User needs to get this from Ganache (click key icon)
-      index: 4,
-      balance: '100.00 ETH',
-    ),
-    PreconfiguredAccount(
-      address: '0xFcE4e96Bd962e5ba4c53bDf5094748dEA009fa0B',
-      privateKey: '', // User needs to get this from Ganache (click key icon)
-      index: 5,
-      balance: '100.00 ETH',
-    ),
-    PreconfiguredAccount(
-      address: '0x8017b486E73bc85E1E90aE224215b0354647fe5D',
-      privateKey: '', // User needs to get this from Ganache (click key icon)
-      index: 6,
-      balance: '100.00 ETH',
-    ),
-  ];
+  /// Default management wallet address (recipient) when Firestore is not set.
+  /// Using account at index 2 from Ganache as management wallet.
+  static const String _defaultManagementWalletAddress = '0x86eC428176911F985A2200915cddADFe84471ccd';
 
-  /// Management wallet address (recipient address for payments)
-  /// Using account at index 2 from Ganache as management wallet
-  static const String managementWalletAddress = '0x86eC428176911F985A2200915cddADFe84471ccd';
+  /// Override from Firestore settings/blockchain.managementWalletAddress (for cross-PC: same chain = same recipient).
+  static String? _managementWalletAddressOverride;
+  static bool _settingsLoaded = false;
+
+  /// Load blockchain settings from Firestore (rpcUrl is loaded in BlockchainService).
+  /// Call this so that when testing from another PC, the same recipient address is used on the shared Ganache.
+  static Future<void> initialize() async {
+    if (_settingsLoaded) return;
+    _settingsLoaded = true;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('settings')
+          .doc('blockchain')
+          .get();
+      final data = doc.data();
+      final addr = data?['managementWalletAddress'] as String?;
+      if (addr != null && addr.trim().isNotEmpty && BlockchainService.isValidAddress(addr.trim())) {
+        _managementWalletAddressOverride = addr.trim();
+      }
+    } catch (_) {
+      // No document or no network: keep using default
+    }
+  }
+
+  /// Management wallet address (recipient for payments). From Firestore if set, else default.
+  /// For cross-PC testing: set in Firestore so all devices use the same recipient on the same Ganache.
+  static String get managementWalletAddress =>
+      _managementWalletAddressOverride ?? _defaultManagementWalletAddress;
 
   /// Generate a new random Ethereum address and private key
   /// Note: This is for testing purposes only. In production, use proper key generation libraries

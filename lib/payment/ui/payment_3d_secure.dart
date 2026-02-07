@@ -10,6 +10,7 @@ class Payment3DSecurePage extends StatefulWidget {
   final double amount;
   final FeeType feeType;
   final String? feeTypeKey;
+  final String feeTypeName;
   final String description;
   final String paymentMethodId;
 
@@ -18,6 +19,7 @@ class Payment3DSecurePage extends StatefulWidget {
     required this.amount,
     required this.feeType,
     this.feeTypeKey,
+    required this.feeTypeName,
     required this.description,
     required this.paymentMethodId,
   }) : super(key: key);
@@ -55,23 +57,20 @@ class _Payment3DSecurePageState extends State<Payment3DSecurePage> {
 
     try {
       // Simulate 3D Secure authentication
-      // In real app, this would be handled by Stripe's 3D Secure flow
       await Future.delayed(const Duration(seconds: 2));
 
-      // Simulate authentication (in real app, check with Stripe)
       final password = _passwordController.text;
-      final isAuthenticated = password == '123456'; // Test password for demo
+      final isAuthenticated = password == '123456';
 
       if (isAuthenticated) {
         setState(() => _isAuthenticated = true);
-
-        // Process payment after successful authentication
         await Future.delayed(const Duration(seconds: 1));
 
-        final transaction = await _controller.processStripePayment(
+        final transaction = await _controller.processPayPalPayment(
           amount: widget.amount,
           feeType: widget.feeType,
           feeTypeKey: widget.feeTypeKey,
+          feeTypeName: widget.feeTypeName,
           paymentMethodId: widget.paymentMethodId,
           description: widget.description,
         );
@@ -80,7 +79,7 @@ class _Payment3DSecurePageState extends State<Payment3DSecurePage> {
           Navigator.pop(context, true);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Payment successful! Transaction ID: ${transaction.id}'),
+              content: Text('Payment successful! Invoice will be sent to your email. Transaction: ${transaction.id}'),
               backgroundColor: Colors.green,
             ),
           );

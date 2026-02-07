@@ -8,12 +8,193 @@
 import * as admin from "firebase-admin";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { PAYPAL_CLIENT_ID as CONFIG_CLIENT_ID, PAYPAL_CLIENT_SECRET as CONFIG_CLIENT_SECRET } from "./paypalConfig";
 
 // 初始化 Firebase Admin
 admin.initializeApp();
 
 const db = admin.firestore();
 const messaging = admin.messaging();
+
+const PAYPAL_SANDBOX_BASE = "https://api-m.sandbox.paypal.com";
+
+function getPayPalCredentials(): { clientId: string; clientSecret: string } {
+  const clientId = process.env.PAYPAL_CLIENT_ID || CONFIG_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET || CONFIG_CLIENT_SECRET;
+  const invalid =
+    !clientId ||
+    !clientSecret ||
+    clientId.includes("REPLACE_WITH") ||
+    clientSecret.includes("REPLACE_WITH");
+  if (invalid) {
+    throw new HttpsError(
+      "failed-precondition",
+      "PayPal sandbox not configured. Edit functions/src/paypalConfig.ts and set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to your sandbox app credentials."
+    );
+  }
+  return { clientId, clientSecret };
+}
+
+async function getPayPalAccessToken(): Promise<string> {
+  const { clientId, clientSecret } = getPayPalCredentials();
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const res = await fetch(`${PAYPAL_SANDBOX_BASE}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Authorization": `Basic ${auth}`,
+    },
+    body: "grant_type=client_credentials",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new HttpsError("internal", `PayPal auth failed: ${text}`);
+  }
+  const data = (await res.json()) as { access_token: string };
+  return data.access_token;
+}
+
+interface CreatePayPalOrderParams {
+  amount: number;
+  currency?: string;
+  returnUrl: string;
+  cancelUrl: string;
+  userId: string;
+  residentId: string;
+  feeType: string;
+  feeTypeKey: string;
+  feeTypeName: string;
+  description?: string;
+}
+
+/**
+ * Create a PayPal Sandbox order. Returns orderId and approvalUrl for the client to redirect the user.
+ * Saves pending order to Firestore for completion after user approves.
+ */
+export const createPayPalOrder = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Must be logged in.");
+    }
+    const uid = request.auth.uid;
+    const data = request.data as CreatePayPalOrderParams;
+    const { amount, returnUrl, cancelUrl, userId, residentId, feeType, feeTypeKey, feeTypeName, description } = data;
+    if (typeof amount !== "number" || amount <= 0 || !returnUrl || !cancelUrl || !userId || !feeType || !feeTypeName) {
+      throw new HttpsError("invalid-argument", "Missing or invalid: amount, returnUrl, cancelUrl, userId, feeType, feeTypeName.");
+    }
+    if (userId !== uid) {
+      throw new HttpsError("permission-denied", "userId must match authenticated user.");
+    }
+
+    const token = await getPayPalAccessToken();
+    const currency = data.currency || "MYR";
+    const value = amount.toFixed(2);
+
+    const createRes = await fetch(`${PAYPAL_SANDBOX_BASE}/v2/checkout/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        intent: "CAPTURE",
+        purchase_units: [
+          {
+            amount: { currency_code: currency, value },
+            description: description || feeTypeName,
+          },
+        ],
+        application_context: {
+          return_url: returnUrl,
+          cancel_url: cancelUrl,
+          brand_name: "Vanguard",
+        },
+      }),
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      throw new HttpsError("internal", `PayPal create order failed: ${errText}`);
+    }
+
+    const order = (await createRes.json()) as { id: string; links?: Array<{ rel: string; href: string }> };
+    const orderId = order.id;
+    const approveLink = order.links?.find((l) => l.rel === "approve");
+    const approvalUrl = approveLink?.href;
+    if (!approvalUrl) {
+      throw new HttpsError("internal", "PayPal order missing approval link.");
+    }
+
+    await db.collection("pendingPayPalOrders").doc(orderId).set({
+      userId,
+      residentId,
+      amount,
+      feeType,
+      feeTypeKey,
+      feeTypeName,
+      description: description || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { orderId, approvalUrl };
+  }
+);
+
+/**
+ * Capture a PayPal order after user approved. Call from app when user returns from PayPal.
+ */
+export const capturePayPalOrder = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Must be logged in.");
+    }
+    const uid = request.auth.uid;
+    const { orderId } = request.data as { orderId?: string };
+    if (!orderId || typeof orderId !== "string") {
+      throw new HttpsError("invalid-argument", "orderId required.");
+    }
+
+    const pendingDoc = await db.collection("pendingPayPalOrders").doc(orderId).get();
+    if (!pendingDoc.exists) {
+      throw new HttpsError("not-found", "Pending order not found or already completed.");
+    }
+    const pending = pendingDoc.data()!;
+    if (pending.userId !== uid) {
+      throw new HttpsError("permission-denied", "Order does not belong to this user.");
+    }
+
+    const token = await getPayPalAccessToken();
+    const captureRes = await fetch(`${PAYPAL_SANDBOX_BASE}/v2/checkout/orders/${orderId}/capture`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+    });
+
+    if (!captureRes.ok) {
+      const errText = await captureRes.text();
+      throw new HttpsError("internal", `PayPal capture failed: ${errText}`);
+    }
+
+    const captureData = (await captureRes.json()) as { id: string; status: string };
+    const captureId = captureData.id;
+    const status = captureData.status;
+
+    await db.collection("pendingPayPalOrders").doc(orderId).delete();
+
+    return {
+      success: status === "COMPLETED",
+      orderId,
+      captureId,
+      status,
+      pendingOrder: pending,
+    };
+  }
+);
 
 /**
  * 辅助函数：获取用户的 FCM Tokens（通过 account ID）
@@ -479,7 +660,7 @@ export const checkLatePayments = onSchedule(
       const feeItems = fees.map(({ data }) => {
         const feeTypeName = getFeeTypeDisplayName((data.feeType as string) || "other");
         const amount = data.amount as number;
-        const dueDate = data.dueDate?.toDate();
+        const dueDate = (data.dueDate as admin.firestore.Timestamp | undefined)?.toDate?.();
         const dueStr = dueDate ? dueDate.toLocaleDateString("en-MY", { dateStyle: "medium" }) : "past due";
         return `${feeTypeName} RM ${amount.toFixed(2)} (due ${dueStr})`;
       });
@@ -507,7 +688,7 @@ export const checkLatePayments = onSchedule(
 );
 
 // ============================================================
-// 7. 访客停车超时检查（定时任务）
+// 6. 访客停车超时检查（定时任务）
 // ============================================================
 
 /**

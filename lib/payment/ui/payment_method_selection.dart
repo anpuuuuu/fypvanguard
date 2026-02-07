@@ -9,6 +9,7 @@ import '../controllers/payment_controller.dart';
 import '../services/blockchain_service.dart';
 import 'credit_card_input.dart';
 import 'blockchain_payment_page.dart';
+import 'paypal_checkout_page.dart';
 
 class PaymentMethodSelectionPage extends StatefulWidget {
   final double amount;
@@ -63,7 +64,6 @@ class _PaymentMethodSelectionPageState
     }
 
     if (_selectedMethod == PaymentMethod.blockchain) {
-      // Navigate to simplified blockchain payment page
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
@@ -76,18 +76,15 @@ class _PaymentMethodSelectionPageState
           ),
         ),
       );
-
-      if (result == true && mounted) {
-        // Payment successful
-        Navigator.pop(context, true);
-      }
+      if (result == true && mounted) Navigator.pop(context, true);
       return;
-    } else {
-      // Navigate to credit card input for traditional payment
+    }
+
+    if (_selectedMethod == PaymentMethod.paypalAccount) {
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => CreditCardInputPage(
+          builder: (_) => PayPalCheckoutPage(
             amount: widget.amount,
             feeType: widget.feeType,
             feeTypeKey: widget.feeTypeKey,
@@ -96,12 +93,24 @@ class _PaymentMethodSelectionPageState
           ),
         ),
       );
-
-      if (result == true && mounted) {
-        // Payment successful
-        Navigator.pop(context, true);
-      }
+      if (result == true && mounted) Navigator.pop(context, true);
+      return;
     }
+
+    // Credit/Debit card (PayPal Sandbox form)
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreditCardInputPage(
+          amount: widget.amount,
+          feeType: widget.feeType,
+          feeTypeKey: widget.feeTypeKey,
+          feeTypeName: widget.feeTypeName,
+          description: widget.description,
+        ),
+      ),
+    );
+    if (result == true && mounted) Navigator.pop(context, true);
   }
 
   void _showError(String message) {
@@ -190,12 +199,23 @@ class _PaymentMethodSelectionPageState
 
             const SizedBox(height: 12),
 
-            // Stripe payment option
+            // PayPal Sandbox – log in with PayPal account
+            _buildPaymentMethodCard(
+              icon: Icons.account_balance_wallet,
+              title: 'Pay with PayPal (Sandbox account)',
+              subtitle: 'Log in with your PayPal sandbox account to pay',
+              method: PaymentMethod.paypalAccount,
+              color: const Color(0xFF003087),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Credit/Debit card (simulated)
             _buildPaymentMethodCard(
               icon: Icons.credit_card,
               title: 'Credit/Debit Card',
-              subtitle: 'Secure payment with Stripe (virtual payment)',
-              method: PaymentMethod.stripe,
+              subtitle: 'Enter card details (simulated, no real charge)',
+              method: PaymentMethod.paypal,
               color: Colors.blue,
             ),
 
@@ -204,8 +224,10 @@ class _PaymentMethodSelectionPageState
             // Payment method info
             if (_selectedMethod == PaymentMethod.blockchain)
               _buildBlockchainInfo()
-            else if (_selectedMethod == PaymentMethod.stripe)
-              _buildStripeInfo(),
+            else if (_selectedMethod == PaymentMethod.paypalAccount)
+              _buildPayPalAccountInfo()
+            else if (_selectedMethod == PaymentMethod.paypal)
+              _buildPayPalInfo(),
 
             const SizedBox(height: 24),
 
@@ -233,9 +255,11 @@ class _PaymentMethodSelectionPageState
                     : Text(
                         _selectedMethod == PaymentMethod.blockchain
                             ? 'Go to Blockchain Payment RM ${widget.amount.toStringAsFixed(2)}'
-                            : _selectedMethod == PaymentMethod.stripe
-                                ? 'Enter Card Details'
-                                : 'Confirm Payment RM ${widget.amount.toStringAsFixed(2)}',
+                            : _selectedMethod == PaymentMethod.paypalAccount
+                                ? 'Pay with PayPal'
+                                : _selectedMethod == PaymentMethod.paypal
+                                    ? 'Enter Card Details'
+                                    : 'Confirm Payment RM ${widget.amount.toStringAsFixed(2)}',
                         style: GoogleFonts.montserrat(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -491,7 +515,50 @@ class _PaymentMethodSelectionPageState
     );
   }
 
-  Widget _buildStripeInfo() {
+  Widget _buildPayPalAccountInfo() {
+    return Card(
+      elevation: 2,
+      color: const Color(0xFF003087).withOpacity(0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: const Color(0xFF003087)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Pay with your PayPal Sandbox account',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF003087),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'PayPal opens inside the app. Log in with your sandbox account (e.g. sb-xxx@personal.example.com) and approve the payment. No real money is charged.',
+              style: GoogleFonts.montserrat(
+                fontSize: 13,
+                color: Colors.grey[800],
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPayPalInfo() {
     return Card(
       elevation: 2,
       color: Colors.blue.shade50,
@@ -509,7 +576,7 @@ class _PaymentMethodSelectionPageState
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Secure Card Payment (Virtual Payment)',
+                    'PayPal Sandbox – Card Payment',
                     style: GoogleFonts.montserrat(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -521,7 +588,7 @@ class _PaymentMethodSelectionPageState
             ),
             const SizedBox(height: 12),
             Text(
-              'You will be guided to enter your credit/debit card information. This is a virtual payment, no actual charges will be made, payment will automatically succeed and be saved to Firebase.',
+              'Enter a valid card number (e.g. 4012888888881881). No real money is deducted. Payment will complete successfully and an invoice will be sent to your email.',
               style: GoogleFonts.montserrat(
                 fontSize: 13,
                 color: Colors.blue.shade900,
@@ -533,5 +600,4 @@ class _PaymentMethodSelectionPageState
       ),
     );
   }
-
 }

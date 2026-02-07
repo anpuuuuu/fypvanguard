@@ -9,9 +9,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../controllers/payment_controller.dart';
 import '../models/transaction_model.dart';
+import '../models/invoice_model.dart';
 import 'payment_method_selection.dart';
 import 'payment_history.dart';
-import 'payment_confirmation.dart';
+import 'invoices_page.dart';
 
 class PaymentHomePage extends StatefulWidget {
   const PaymentHomePage({Key? key}) : super(key: key);
@@ -26,6 +27,7 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
   String? _residentId;
   bool _isLoading = true;
   List<Map<String, dynamic>> _pendingFees = [];
+  List<Invoice> _recentInvoices = [];
 
   @override
   void initState() {
@@ -37,6 +39,16 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
     await _controller.initialize();
     await _loadResidentInfo();
     await _loadPendingFees();
+    await _loadRecentInvoices();
+  }
+
+  Future<void> _loadRecentInvoices() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      final list = await _controller.getRecentInvoices(user.uid, limit: 5);
+      if (mounted) setState(() => _recentInvoices = list);
+    } catch (_) {}
   }
 
   Future<void> _loadResidentInfo() async {
@@ -87,9 +99,9 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
         ),
       ),
     ).then((result) {
-      // Refresh after payment completion
       if (result == true) {
         _loadPendingFees();
+        _loadRecentInvoices();
       }
     });
   }
@@ -150,6 +162,11 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
                       _buildEmptyState()
                     else
                       ..._pendingFees.map((fee) => _buildFeeCard(fee)),
+
+                    const SizedBox(height: 24),
+
+                    // Recent invoices (after card/PayPal payment)
+                    _buildRecentInvoicesSection(),
 
                     const SizedBox(height: 24),
 
@@ -327,6 +344,115 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
     );
   }
 
+  Widget _buildRecentInvoicesSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const InvoicesPage(),
+            ),
+          ).then((_) => _loadRecentInvoices());
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.receipt_long,
+                      color: Colors.purple.shade700,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Invoices',
+                          style: GoogleFonts.montserrat(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _recentInvoices.isEmpty
+                              ? 'View and download your payment invoices'
+                              : '${_recentInvoices.length} recent invoice(s)',
+                          style: GoogleFonts.montserrat(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.grey[400],
+                  ),
+                ],
+              ),
+              if (_recentInvoices.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                ..._recentInvoices.take(3).map((inv) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        inv.invoiceNumber,
+                        style: GoogleFonts.montserrat(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        'RM ${inv.amount.toStringAsFixed(2)}',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 13,
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+                const SizedBox(height: 4),
+                Text(
+                  'View all invoices →',
+                  style: GoogleFonts.montserrat(
+                    fontSize: 12,
+                    color: Colors.blue.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHistorySection() {
     return Card(
       elevation: 2,
@@ -426,7 +552,7 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
             const SizedBox(height: 12),
             _buildInfoItem('• Supports blockchain and traditional payment methods'),
             _buildInfoItem('• Blockchain payments use Ethereum network (Ganache test environment)'),
-            _buildInfoItem('• Traditional payments support credit/debit cards (Stripe)'),
+            _buildInfoItem('• Card payments via PayPal Sandbox (no real charge, invoice by email)'),
             _buildInfoItem('• All transaction records are securely stored in the system'),
           ],
         ),

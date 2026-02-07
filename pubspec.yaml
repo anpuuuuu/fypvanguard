@@ -14,6 +14,7 @@ dependencies:
   firebase_core: ^3.15.0
   firebase_auth: ^5.3.1
   cloud_firestore: ^5.6.0
+  cloud_functions: ^5.2.0
   firebase_messaging: ^15.2.4
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
@@ -24,6 +25,7 @@ dependencies:
   intl: ^0.20.2
   fl_chart: ^0.60.0
   url_launcher: ^6.1.7
+  webview_flutter: ^4.10.0
   google_mlkit_text_recognition: ^0.14.0
   path_provider: ^2.1.2
   qr_flutter: ^4.1.0
@@ -31,6 +33,7 @@ dependencies:
   crypto: ^3.0.3
   share_plus: ^7.2.2
   http: ^1.2.2
+  web3dart: ^2.5.0
   google_mlkit_face_detection: ^0.12.0
   tflite_flutter: ^0.11.0
   camera: ^0.11.0
