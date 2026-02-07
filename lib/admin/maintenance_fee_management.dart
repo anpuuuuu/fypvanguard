@@ -8,6 +8,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../payment/models/payment_type_model.dart';
+import '../payment/services/payment_type_service.dart';
 
 class MaintenanceFeeManagementPage extends StatefulWidget {
   const MaintenanceFeeManagementPage({Key? key}) : super(key: key);
@@ -21,7 +23,10 @@ class _MaintenanceFeeManagementPageState extends State<MaintenanceFeeManagementP
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _dueDateController = TextEditingController();
+  final PaymentTypeService _paymentTypeService = PaymentTypeService();
   
+  List<PaymentType> _paymentTypes = [];
+  PaymentType? _selectedPaymentType;
   String _targetType = 'all'; // 'all' or 'specific'
   List<String> _selectedResidentIds = [];
   List<Map<String, dynamic>> _allResidents = [];
@@ -33,9 +38,26 @@ class _MaintenanceFeeManagementPageState extends State<MaintenanceFeeManagementP
   void initState() {
     super.initState();
     _loadResidents();
+    _loadPaymentTypes();
     // Set default due date to 30 days from now
     _selectedDueDate = DateTime.now().add(const Duration(days: 30));
     _dueDateController.text = DateFormat('yyyy-MM-dd').format(_selectedDueDate!);
+  }
+
+  Future<void> _loadPaymentTypes() async {
+    try {
+      final types = await _paymentTypeService.getPaymentTypes();
+      setState(() {
+        _paymentTypes = types;
+        _selectedPaymentType = types.isNotEmpty ? types.first : null;
+      });
+    } catch (e) {
+      debugPrint('Failed to load payment types: $e');
+      setState(() {
+        _paymentTypes = defaultPaymentTypes;
+        _selectedPaymentType = defaultPaymentTypes.isNotEmpty ? defaultPaymentTypes.first : null;
+      });
+    }
   }
 
   @override
@@ -148,7 +170,7 @@ class _MaintenanceFeeManagementPageState extends State<MaintenanceFeeManagementP
               .add({
             'residentId': residentId,
             'amount': amount,
-            'feeType': 'maintenanceFee',
+            'feeType': _selectedPaymentType?.key ?? 'maintenance',
             'description': description,
             'dueDate': Timestamp.fromDate(dueDate),
             'createdAt': FieldValue.serverTimestamp(),
@@ -222,6 +244,41 @@ class _MaintenanceFeeManagementPageState extends State<MaintenanceFeeManagementP
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Payment type selection
+                    Text(
+                      'Payment Type',
+                      style: GoogleFonts.montserrat(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade400),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<PaymentType>(
+                          value: _selectedPaymentType,
+                          isExpanded: true,
+                          hint: Text('Select payment type', style: GoogleFonts.montserrat()),
+                          items: _paymentTypes.map((t) {
+                            return DropdownMenuItem(
+                              value: t,
+                              child: Text('${t.displayName}${t.description.isNotEmpty ? ' - ${t.description}' : ''}', style: GoogleFonts.montserrat()),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() => _selectedPaymentType = value);
+                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
                     // Amount input
                     Text(
                       'Amount (RM)',
@@ -441,6 +498,10 @@ class _MaintenanceFeeManagementPageState extends State<MaintenanceFeeManagementP
                             ),
                             const SizedBox(height: 12),
                             _buildSummaryRow(
+                              'Payment Type',
+                              _selectedPaymentType?.displayName ?? '-',
+                            ),
+                            _buildSummaryRow(
                               'Amount',
                               _amountController.text.isNotEmpty
                                   ? 'RM ${double.tryParse(_amountController.text)?.toStringAsFixed(2) ?? '0.00'}'
@@ -487,7 +548,7 @@ class _MaintenanceFeeManagementPageState extends State<MaintenanceFeeManagementP
                                 ),
                               )
                             : Text(
-                                'Push Maintenance Fees',
+                                'Push Fees',
                                 style: GoogleFonts.montserrat(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,

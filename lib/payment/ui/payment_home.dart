@@ -81,6 +81,8 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
         builder: (_) => PaymentMethodSelectionPage(
           amount: fee['amount'] as double,
           feeType: fee['type'] as FeeType,
+          feeTypeKey: fee['typeKey'] as String?,
+          feeTypeName: fee['typeName'] as String? ?? _getFeeTypeName(fee['type'] as FeeType),
           description: fee['description'] as String? ?? '',
         ),
       ),
@@ -204,6 +206,7 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
 
   Widget _buildFeeCard(Map<String, dynamic> fee) {
     final feeType = fee['type'] as FeeType;
+    final feeTypeName = fee['typeName'] as String? ?? _getFeeTypeName(feeType);
     final amount = fee['amount'] as double;
     final description = fee['description'] as String? ?? '';
     final dueDate = fee['dueDate'] as DateTime?;
@@ -231,7 +234,7 @@ class _PaymentHomePageState extends State<PaymentHomePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _getFeeTypeName(feeType),
+                          feeTypeName,
                           style: GoogleFonts.montserrat(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,

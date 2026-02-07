@@ -59,6 +59,8 @@ class _PaymentConfirmationPageState extends State<PaymentConfirmationPage> {
         builder: (_) => PaymentMethodSelectionPage(
           amount: widget.amount,
           feeType: widget.feeType,
+          feeTypeKey: widget.feeType.toString().split('.').last,
+          feeTypeName: _getFeeTypeName(widget.feeType),
           description: widget.description,
           paymentMethod: widget.paymentMethod,
         ),

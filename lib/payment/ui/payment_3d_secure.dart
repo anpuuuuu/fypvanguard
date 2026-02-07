@@ -9,6 +9,7 @@ import '../controllers/payment_controller.dart';
 class Payment3DSecurePage extends StatefulWidget {
   final double amount;
   final FeeType feeType;
+  final String? feeTypeKey;
   final String description;
   final String paymentMethodId;
 
@@ -16,6 +17,7 @@ class Payment3DSecurePage extends StatefulWidget {
     Key? key,
     required this.amount,
     required this.feeType,
+    this.feeTypeKey,
     required this.description,
     required this.paymentMethodId,
   }) : super(key: key);
@@ -69,6 +71,7 @@ class _Payment3DSecurePageState extends State<Payment3DSecurePage> {
         final transaction = await _controller.processStripePayment(
           amount: widget.amount,
           feeType: widget.feeType,
+          feeTypeKey: widget.feeTypeKey,
           paymentMethodId: widget.paymentMethodId,
           description: widget.description,
         );

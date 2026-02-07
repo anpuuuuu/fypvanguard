@@ -43,6 +43,7 @@ import '../admin/announcements.dart';
 import '../admin/maintenance_fee_management.dart';
 import '../admin/payment_history_admin.dart';
 import '../admin/maintenance_management.dart';
+import '../admin/payment_type_management.dart';
 
 // security screens
 import '../security/security_home.dart';
@@ -193,6 +194,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/admin/maintenanceFees',
       builder: (context, state) => const MaintenanceFeeManagementPage(),
+    ),
+    GoRoute(
+      path: '/admin/paymentTypes',
+      builder: (context, state) => const PaymentTypeManagementPage(),
     ),
     GoRoute(
       path: '/admin/paymentHistory',

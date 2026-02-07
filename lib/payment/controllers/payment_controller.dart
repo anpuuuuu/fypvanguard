@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/transaction_model.dart';
 import '../services/blockchain_service.dart';
 import '../services/payment_gateway_service.dart';
+import '../services/payment_type_service.dart';
 
 /// Payment controller
 class PaymentController {
@@ -23,7 +24,8 @@ class PaymentController {
   /// Process blockchain payment
   /// [amount] - Payment amount in RM (Malaysian Ringgit)
   /// [ethAmount] - Payment amount in ETH (converted from RM)
-  /// [feeType] - Fee type
+  /// [feeType] - Fee type (for transaction record)
+  /// [feeTypeKey] - Fee type key string for matching pending fees (e.g. 'maintenance', 'insurance')
   /// [fromAddress] - Sender address (from Ganache)
   /// [privateKey] - User private key (should be retrieved from secure storage)
   /// [toAddress] - Recipient address (management address)
@@ -32,6 +34,7 @@ class PaymentController {
     required double amount, // RM amount (original)
     required double ethAmount, // ETH amount (converted)
     required FeeType feeType,
+    String? feeTypeKey,
     required String fromAddress,
     required String privateKey,
     required String toAddress,
@@ -116,7 +119,8 @@ class PaymentController {
       // Mark pending fees as paid (if any)
       final updatedDoc = await docRef.get();
       final transaction = Transaction.fromFirestore(updatedDoc);
-      await _markPendingFeesAsPaid(residentId, feeType, amount, transaction.id);
+      final feeTypeStr = feeTypeKey ?? feeType.toString().split('.').last;
+      await _markPendingFeesAsPaid(residentId, feeTypeStr, amount, transaction.id);
 
       // Return updated transaction
       return transaction;
@@ -131,12 +135,14 @@ class PaymentController {
 
   /// Process traditional payment (Stripe)
   /// [amount] - Payment amount
-  /// [feeType] - Fee type
+  /// [feeType] - Fee type (for transaction record)
+  /// [feeTypeKey] - Fee type key string for matching pending fees
   /// [paymentMethodId] - Stripe payment method ID
   /// [description] - Payment description
   Future<Transaction> processStripePayment({
     required double amount,
     required FeeType feeType,
+    String? feeTypeKey,
     required String paymentMethodId,
     String? description,
   }) async {
@@ -216,7 +222,8 @@ class PaymentController {
       // Mark pending fees as paid (if any)
       final updatedDoc = await docRef.get();
       final transaction = Transaction.fromFirestore(updatedDoc);
-      await _markPendingFeesAsPaid(residentId, feeType, amount, transaction.id);
+      final feeTypeStr = feeTypeKey ?? feeType.toString().split('.').last;
+      await _markPendingFeesAsPaid(residentId, feeTypeStr, amount, transaction.id);
 
       // Return updated transaction
       return transaction;
@@ -230,9 +237,10 @@ class PaymentController {
   }
 
   /// Mark pending fees as paid when payment is completed
+  /// [feeTypeStr] - Fee type key string (e.g. 'maintenance', 'insurance', 'maintenanceFee')
   Future<void> _markPendingFeesAsPaid(
     String residentId,
-    FeeType feeType,
+    String feeTypeStr,
     double amount,
     String? transactionId,
   ) async {
@@ -242,7 +250,7 @@ class PaymentController {
           .collection('pendingFees')
           .where('residentId', isEqualTo: residentId)
           .where('status', isEqualTo: 'pending')
-          .where('feeType', isEqualTo: feeType.toString().split('.').last)
+          .where('feeType', isEqualTo: feeTypeStr)
           .get();
 
       // Mark fees as paid (match by amount or mark all matching type)
@@ -316,10 +324,10 @@ class PaymentController {
   }
 
   /// Get pending fees list
-  /// Can query fees that need to be paid based on business logic
-  /// For example: management fees, late fees, etc.
+  /// Returns fees with typeKey (for payment processing) and typeName (for display from admin config)
   Future<List<Map<String, dynamic>>> getPendingFees(String residentId) async {
     final fees = <Map<String, dynamic>>[];
+    final paymentTypeService = PaymentTypeService();
 
     // Query pending fees from Firestore (pushed by admin)
     try {
@@ -331,15 +339,18 @@ class PaymentController {
 
       for (var doc in pendingFeesSnapshot.docs) {
         final data = doc.data();
-        final feeTypeStr = data['feeType'] as String? ?? 'other';
+        final feeTypeKey = data['feeType'] as String? ?? 'other';
         final feeType = FeeType.values.firstWhere(
-          (e) => e.toString().split('.').last == feeTypeStr,
+          (e) => e.toString().split('.').last == feeTypeKey,
           orElse: () => FeeType.other,
         );
+        final typeName = await paymentTypeService.getDisplayName(feeTypeKey);
 
         fees.add({
           'id': doc.id,
           'type': feeType,
+          'typeKey': feeTypeKey,
+          'typeName': typeName,
           'amount': (data['amount'] as num).toDouble(),
           'description': data['description'] as String? ?? '',
           'dueDate': data['dueDate'] != null
@@ -356,6 +367,8 @@ class PaymentController {
     if (managementFee != null && managementFee['amount'] > 0) {
       fees.add({
         'type': FeeType.managementFee,
+        'typeKey': 'managementFee',
+        'typeName': await paymentTypeService.getDisplayName('managementFee'),
         'amount': managementFee['amount'],
         'description': 'Management Fee - ${managementFee['period']}',
         'dueDate': managementFee['dueDate'],

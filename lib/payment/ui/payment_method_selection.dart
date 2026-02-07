@@ -13,6 +13,8 @@ import 'blockchain_payment_page.dart';
 class PaymentMethodSelectionPage extends StatefulWidget {
   final double amount;
   final FeeType feeType;
+  final String? feeTypeKey;  // For matching pending fees (e.g. 'maintenance', 'insurance')
+  final String feeTypeName;  // Display name from admin config
   final String description;
   final PaymentMethod? paymentMethod; // Pre-selected payment method
 
@@ -20,6 +22,8 @@ class PaymentMethodSelectionPage extends StatefulWidget {
     Key? key,
     required this.amount,
     required this.feeType,
+    this.feeTypeKey,
+    required this.feeTypeName,
     required this.description,
     this.paymentMethod,
   }) : super(key: key);
@@ -66,6 +70,8 @@ class _PaymentMethodSelectionPageState
           builder: (_) => BlockchainPaymentPage(
             amount: widget.amount,
             feeType: widget.feeType,
+            feeTypeKey: widget.feeTypeKey,
+            feeTypeName: widget.feeTypeName,
             description: widget.description,
           ),
         ),
@@ -84,6 +90,8 @@ class _PaymentMethodSelectionPageState
           builder: (_) => CreditCardInputPage(
             amount: widget.amount,
             feeType: widget.feeType,
+            feeTypeKey: widget.feeTypeKey,
+            feeTypeName: widget.feeTypeName,
             description: widget.description,
           ),
         ),
@@ -272,7 +280,7 @@ class _PaymentMethodSelectionPageState
                   ),
                 ),
                 Text(
-                  _getFeeTypeName(widget.feeType),
+                  widget.feeTypeName,
                   style: GoogleFonts.montserrat(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -526,16 +534,4 @@ class _PaymentMethodSelectionPageState
     );
   }
 
-  String _getFeeTypeName(FeeType feeType) {
-    switch (feeType) {
-      case FeeType.managementFee:
-        return 'Management Fee';
-      case FeeType.maintenanceFee:
-        return 'Maintenance Fee';
-      case FeeType.lateFee:
-        return 'Late Fee';
-      case FeeType.other:
-        return 'Other Fee';
-    }
-  }
 }

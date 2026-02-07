@@ -61,11 +61,16 @@ class _EmergencyAlertsPageState extends State<EmergencyAlertsPage> {
     );
   }
 
-  Future<void> _updateEmergencyStatus(String docId, String status) async {
-    await _firestore.collection('emergencies').doc(docId).update({
+  Future<void> _updateEmergencyStatus(String docId, String status, {String? guardResponse}) async {
+    final updates = <String, dynamic>{
       'status': status,
-      'respondedAt': status == 'resolved' ? FieldValue.serverTimestamp() : null,
-    });
+      'guardResponse': guardResponse?.trim().isNotEmpty == true ? guardResponse!.trim() : null,
+      'respondedAt': FieldValue.serverTimestamp(),
+    };
+    if (status == 'resolved') {
+      updates['resolvedAt'] = FieldValue.serverTimestamp();
+    }
+    await _firestore.collection('emergencies').doc(docId).update(updates);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -73,6 +78,59 @@ class _EmergencyAlertsPageState extends State<EmergencyAlertsPage> {
           backgroundColor: Colors.green,
         ),
       );
+    }
+  }
+
+  Future<void> _showRespondDialog(String docId, String currentStatus) async {
+    final responseController = TextEditingController();
+    final newStatus = currentStatus == 'responding' ? 'resolved' : 'responding';
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text(
+          newStatus == 'resolved' ? 'Mark as Resolved' : 'Mark as Responding',
+          style: GoogleFonts.montserrat(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Add a response for the resident (optional):',
+              style: GoogleFonts.montserrat(fontSize: 14, color: Colors.grey[700]),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: responseController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'e.g. On my way to your unit / Issue resolved',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: GoogleFonts.montserrat()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: Text(
+              newStatus == 'resolved' ? 'Resolve' : 'Respond',
+              style: GoogleFonts.montserrat(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (submitted == true) {
+      await _updateEmergencyStatus(docId, newStatus, guardResponse: responseController.text);
     }
   }
 
@@ -390,10 +448,7 @@ class _EmergencyAlertsPageState extends State<EmergencyAlertsPage> {
                                           status == 'responding' ? 'Resolve' : 'Respond',
                                           style: GoogleFonts.montserrat(fontSize: 13),
                                         ),
-                                        onPressed: () {
-                                          final newStatus = status == 'responding' ? 'resolved' : 'responding';
-                                          _updateEmergencyStatus(doc.id, newStatus);
-                                        },
+                                        onPressed: () => _showRespondDialog(doc.id, status),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: status == 'responding'
                                               ? Colors.green[600]

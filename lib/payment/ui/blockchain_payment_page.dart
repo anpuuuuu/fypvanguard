@@ -12,12 +12,16 @@ import '../services/blockchain_service.dart';
 class BlockchainPaymentPage extends StatefulWidget {
   final double amount;
   final FeeType feeType;
+  final String? feeTypeKey;
+  final String feeTypeName;
   final String description;
 
   const BlockchainPaymentPage({
     Key? key,
     required this.amount,
     required this.feeType,
+    this.feeTypeKey,
+    required this.feeTypeName,
     required this.description,
   }) : super(key: key);
 
@@ -194,6 +198,7 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
         amount: widget.amount, // Original RM amount
         ethAmount: ethAmount, // Converted ETH amount
         feeType: widget.feeType,
+        feeTypeKey: widget.feeTypeKey,
         fromAddress: fromAddress,
         privateKey: privateKey,
         toAddress: WalletService.managementWalletAddress,
@@ -507,7 +512,7 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
                   ),
                 ),
                 Text(
-                  _getFeeTypeName(widget.feeType),
+                  widget.feeTypeName,
                   style: GoogleFonts.montserrat(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -983,18 +988,5 @@ class _BlockchainPaymentPageState extends State<BlockchainPaymentPage> {
         ),
       ),
     );
-  }
-
-  String _getFeeTypeName(FeeType feeType) {
-    switch (feeType) {
-      case FeeType.managementFee:
-        return 'Management Fee';
-      case FeeType.maintenanceFee:
-        return 'Maintenance Fee';
-      case FeeType.lateFee:
-        return 'Late Fee';
-      case FeeType.other:
-        return 'Other Fee';
-    }
   }
 }

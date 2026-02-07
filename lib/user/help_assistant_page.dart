@@ -270,7 +270,7 @@ class _HelpAssistantPageState extends State<HelpAssistantPage> {
                   ),
                 ),
                 Text(
-                  'Here to help',
+                  HelpAssistantService.hasApiKey ? 'Real AI · Here to help' : 'Here to help',
                   style: GoogleFonts.montserrat(
                     fontSize: 12,
                     fontWeight: FontWeight.normal,

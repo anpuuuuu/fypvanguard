@@ -12,12 +12,16 @@ import 'payment_3d_secure.dart';
 class CreditCardInputPage extends StatefulWidget {
   final double amount;
   final FeeType feeType;
+  final String? feeTypeKey;
+  final String feeTypeName;
   final String description;
 
   const CreditCardInputPage({
     Key? key,
     required this.amount,
     required this.feeType,
+    this.feeTypeKey,
+    required this.feeTypeName,
     required this.description,
   }) : super(key: key);
 
@@ -83,6 +87,7 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
             builder: (_) => Payment3DSecurePage(
               amount: widget.amount,
               feeType: widget.feeType,
+              feeTypeKey: widget.feeTypeKey,
               description: widget.description,
               paymentMethodId: paymentMethodId,
             ),
@@ -106,6 +111,7 @@ class _CreditCardInputPageState extends State<CreditCardInputPage> {
         final transaction = await _controller.processStripePayment(
           amount: widget.amount,
           feeType: widget.feeType,
+          feeTypeKey: widget.feeTypeKey,
           paymentMethodId: paymentMethodId,
           description: widget.description,
         );

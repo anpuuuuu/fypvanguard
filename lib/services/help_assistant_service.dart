@@ -6,15 +6,24 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Help Assistant Service
-/// Provides answers to residents' questions about the system using keyword-based responses
+/// Uses Groq API for real AI responses. Falls back to keyword-based responses when no API key is set.
 class HelpAssistantService {
-  // Note: In production, API keys should be stored in Firebase Functions or environment variables
-  // This service uses keyword-based fallback responses
-  static const String _apiKey = ''; // Leave empty to use fallback responses
-  static const String _apiUrl = 'https://api.openai.com/v1/chat/completions';
-  
-  /// Check if API key is configured
-  static bool get hasApiKey => _apiKey.isNotEmpty && _apiKey != 'YOUR_OPENAI_API_KEY';
+  // ========== 在这里粘贴你的 Groq API Key ==========
+  static const String _apiKeyPasteHere = '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';
+
+  static const String _apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  static const String _model = 'llama-3.3-70b-versatile';
+  // ================================================
+
+  static String get _apiKey {
+    if (_apiKeyPasteHere.isNotEmpty && _apiKeyPasteHere != 'YOUR_GROQ_API_KEY') {
+      return _apiKeyPasteHere;
+    }
+    return const String.fromEnvironment('HELP_ASSISTANT_API_KEY', defaultValue: '');
+  }
+
+  /// Whether a real AI is configured (API key set).
+  static bool get hasApiKey => _apiKey.isNotEmpty && _apiKey != 'YOUR_GROQ_API_KEY';
 
   /// System knowledge base - contains all feature descriptions
   static String getSystemKnowledge() {
@@ -280,7 +289,7 @@ Always answer residents' questions in a friendly, professional, and patient mann
         'content': userMessage,
       });
 
-      // Call OpenAI API
+      // Call Groq API (OpenAI-compatible)
       final response = await http.post(
         Uri.parse(_apiUrl),
         headers: {
@@ -288,7 +297,7 @@ Always answer residents' questions in a friendly, professional, and patient mann
           'Authorization': 'Bearer $_apiKey',
         },
         body: jsonEncode({
-          'model': 'gpt-3.5-turbo',
+          'model': _model,
           'messages': messages,
           'temperature': 0.7,
           'max_tokens': 1000,
@@ -299,12 +308,18 @@ Always answer residents' questions in a friendly, professional, and patient mann
         final data = jsonDecode(response.body);
         return data['choices'][0]['message']['content'] as String;
       } else {
-        // If API call fails, return fallback response
-        return _getFallbackResponse(userMessage);
+        // Show why API failed so user can fix (e.g. 401 = bad key)
+        final body = response.body;
+        if (response.statusCode == 401) {
+          return 'API key is invalid or expired. Please check your key in lib/services/help_assistant_service.dart (or at console.groq.com). Error: ${body.length > 200 ? body.substring(0, 200) : body}';
+        }
+        if (response.statusCode == 429) {
+          return 'API rate limit or quota exceeded. Please try again later or check your Groq usage.';
+        }
+        return 'API error (${response.statusCode}). Check your API key and network. Details: ${body.length > 300 ? body.substring(0, 300) : body}';
       }
     } catch (e) {
-      // On error, return fallback response
-      return _getFallbackResponse(userMessage);
+      return 'Cannot connect to AI: ${e.toString()}. Check internet connection and API key.';
     }
   }
 

@@ -1,5 +1,5 @@
 // lib/admin/payment_history_admin.dart
-// Admin payment history page - View all user transactions
+// Admin payment history page - Resident-centric view with payment status
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../payment/models/transaction_model.dart';
 import '../payment/controllers/payment_controller.dart';
+import '../payment/services/payment_type_service.dart';
 
 class AdminPaymentHistoryPage extends StatefulWidget {
   const AdminPaymentHistoryPage({Key? key}) : super(key: key);
@@ -16,28 +17,202 @@ class AdminPaymentHistoryPage extends StatefulWidget {
   State<AdminPaymentHistoryPage> createState() => _AdminPaymentHistoryPageState();
 }
 
-class _AdminPaymentHistoryPageState extends State<AdminPaymentHistoryPage> {
+class _ResidentPaymentStatus {
+  final String residentId;
+  final String unitNumber;
+  final String residentName;
+  final String role;
+  final List<_FeeStatus> fees;
+
+  _ResidentPaymentStatus({
+    required this.residentId,
+    required this.unitNumber,
+    required this.residentName,
+    required this.role,
+    required this.fees,
+  });
+
+  int get paidCount => fees.where((f) => f.status == 'paid').length;
+  int get pendingCount => fees.where((f) => f.status == 'pending').length;
+}
+
+class _FeeStatus {
+  final String feeTypeKey;
+  final String feeTypeName;
+  final double amount;
+  final String status; // 'paid' | 'pending'
+  final DateTime? dueDate;
+  final String? description;
+
+  _FeeStatus({
+    required this.feeTypeKey,
+    required this.feeTypeName,
+    required this.amount,
+    required this.status,
+    this.dueDate,
+    this.description,
+  });
+}
+
+class _AdminPaymentHistoryPageState extends State<AdminPaymentHistoryPage>
+    with SingleTickerProviderStateMixin {
   final PaymentController _controller = PaymentController();
-  String _selectedFilter = 'All';
-  final List<String> _filterOptions = ['All', 'Completed', 'Pending', 'Processing', 'Failed'];
+  final PaymentTypeService _paymentTypeService = PaymentTypeService();
+
+  late TabController _tabController;
+  List<_ResidentPaymentStatus> _residents = [];
+  bool _loadingResidents = true;
+  String _searchQuery = '';
+  String _selectedFilter = 'All'; // All, Paid, Unpaid
+  final List<String> _filterOptions = ['All', 'Has Unpaid', 'All Paid'];
+
+  // Transaction tab
+  String _selectedTxFilter = 'All';
+  final List<String> _txFilterOptions = ['All', 'Completed', 'Pending', 'Processing', 'Failed'];
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _controller.initialize();
+    _loadResidentsWithPaymentStatus();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _controller.dispose();
     super.dispose();
   }
 
+  Future<void> _loadResidentsWithPaymentStatus() async {
+    setState(() => _loadingResidents = true);
+    try {
+      // Load all approved residents (owners and tenants)
+      final accountsSnapshot = await FirebaseFirestore.instance
+          .collection('accounts')
+          .where('status', isEqualTo: 'approved')
+          .where('role', whereIn: ['owner', 'tenant'])
+          .get();
+
+      final residentIds = <String>{};
+      final residentList = <Map<String, dynamic>>[];
+
+      for (var accountDoc in accountsSnapshot.docs) {
+        final accountData = accountDoc.data();
+        final residentId = accountData['residentId'] as String? ?? accountDoc.id;
+
+        if (residentIds.contains(residentId)) continue;
+        residentIds.add(residentId);
+
+        final residentDoc = await FirebaseFirestore.instance
+            .collection('residents')
+            .doc(residentId)
+            .get();
+
+        if (residentDoc.exists) {
+          final residentData = residentDoc.data()!;
+          residentList.add({
+            'id': residentId,
+            'unitNumber': residentData['unitNumber'] as String? ?? 'N/A',
+            'fullName': residentData['fullName'] as String? ?? 'Unknown',
+            'role': accountData['role'] as String? ?? 'owner',
+          });
+        }
+      }
+
+      // Load all pendingFees (both pending and paid)
+      final pendingFeesSnapshot = await FirebaseFirestore.instance
+          .collection('pendingFees')
+          .get();
+
+      final feeTypeNames = <String, String>{};
+      for (var doc in pendingFeesSnapshot.docs) {
+        final feeTypeKey = doc.data()['feeType'] as String? ?? 'other';
+        if (!feeTypeNames.containsKey(feeTypeKey)) {
+          feeTypeNames[feeTypeKey] = await _paymentTypeService.getDisplayName(feeTypeKey);
+        }
+      }
+
+      // Map residentId -> list of fees
+      final residentFeesMap = <String, List<_FeeStatus>>{};
+      for (var doc in pendingFeesSnapshot.docs) {
+        final data = doc.data();
+        final residentId = data['residentId'] as String?;
+        if (residentId == null) continue;
+
+        final feeTypeKey = data['feeType'] as String? ?? 'other';
+        final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+        final status = data['status'] as String? ?? 'pending';
+        final dueDate = data['dueDate'] != null
+            ? (data['dueDate'] as Timestamp).toDate()
+            : null;
+        final description = data['description'] as String?;
+
+        residentFeesMap.putIfAbsent(residentId, () => []).add(_FeeStatus(
+          feeTypeKey: feeTypeKey,
+          feeTypeName: feeTypeNames[feeTypeKey] ?? feeTypeKey,
+          amount: amount,
+          status: status,
+          dueDate: dueDate,
+          description: description,
+        ));
+      }
+
+      final result = <_ResidentPaymentStatus>[];
+      for (var r in residentList) {
+        final fees = residentFeesMap[r['id'] as String] ?? [];
+        result.add(_ResidentPaymentStatus(
+          residentId: r['id'] as String,
+          unitNumber: r['unitNumber'] as String,
+          residentName: r['fullName'] as String,
+          role: r['role'] as String,
+          fees: fees..sort((a, b) => (a.dueDate ?? DateTime(0)).compareTo(b.dueDate ?? DateTime(0))),
+        ));
+      }
+
+      result.sort((a, b) {
+        final unitCompare = a.unitNumber.compareTo(b.unitNumber);
+        if (unitCompare != 0) return unitCompare;
+        return a.residentName.compareTo(b.residentName);
+      });
+
+      setState(() {
+        _residents = result;
+        _loadingResidents = false;
+      });
+    } catch (e) {
+      setState(() => _loadingResidents = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load: $e')),
+        );
+      }
+    }
+  }
+
+  List<_ResidentPaymentStatus> get _filteredResidents {
+    var list = _residents;
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      list = list.where((r) {
+        return r.unitNumber.toLowerCase().contains(q) ||
+            r.residentName.toLowerCase().contains(q);
+      }).toList();
+    }
+    if (_selectedFilter == 'Has Unpaid') {
+      list = list.where((r) => r.pendingCount > 0).toList();
+    } else if (_selectedFilter == 'All Paid') {
+      list = list.where((r) => r.fees.isNotEmpty && r.pendingCount == 0).toList();
+    }
+    return list;
+  }
+
   Stream<List<Transaction>> _getFilteredTransactions() {
-    if (_selectedFilter == 'All') {
+    if (_selectedTxFilter == 'All') {
       return _controller.getAllTransactions();
     } else {
-      final status = _getStatusFromFilter(_selectedFilter);
+      final status = _getStatusFromFilter(_selectedTxFilter);
       return _controller.getTransactionsByStatus(status);
     }
   }
@@ -63,26 +238,28 @@ class _AdminPaymentHistoryPageState extends State<AdminPaymentHistoryPage> {
           .collection('accounts')
           .doc(userId)
           .get();
-      
+
       final accountData = accountDoc.data();
       final residentId = accountData?['residentId'] as String? ?? userId;
-      
+
       final residentDoc = await FirebaseFirestore.instance
           .collection('residents')
           .doc(residentId)
           .get();
-      
+
       final residentData = residentDoc.data();
       return {
         'name': residentData?['fullName'] as String? ?? 'Unknown User',
         'email': accountData?['email'] as String? ?? 'No email',
         'residentId': residentId,
+        'unitNumber': residentData?['unitNumber'] as String? ?? 'N/A',
       };
     } catch (e) {
       return {
         'name': 'Unknown User',
         'email': 'No email',
         'residentId': userId,
+        'unitNumber': 'N/A',
       };
     }
   }
@@ -233,50 +410,228 @@ class _AdminPaymentHistoryPageState extends State<AdminPaymentHistoryPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => context.go('/admin'),
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Colors.white,
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.people, size: 18),
+                  SizedBox(width: 6),
+                  Text('By Resident', style: GoogleFonts.montserrat()),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.receipt_long, size: 18),
+                  SizedBox(width: 6),
+                  Text('Transactions', style: GoogleFonts.montserrat()),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          // Filter section
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: Row(
+          _buildResidentListTab(),
+          _buildTransactionsTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResidentListTab() {
+    return Column(
+      children: [
+        // Search and filter
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Colors.white,
+          child: Column(
+            children: [
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search by unit or name...',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text('Filter:', style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButton<String>(
+                      value: _selectedFilter,
+                      isExpanded: true,
+                      items: _filterOptions.map((o) => DropdownMenuItem(value: o, child: Text(o, style: GoogleFonts.montserrat()))).toList(),
+                      onChanged: (v) => setState(() => _selectedFilter = v ?? 'All'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loadingResidents
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _loadResidentsWithPaymentStatus,
+                  child: _buildResidentList(),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResidentList() {
+    final list = _filteredResidents;
+
+    if (list.isEmpty) {
+      return ListView(
+        children: [
+          SizedBox(height: 80),
+          Center(
+            child: Column(
               children: [
-                Text(
-                  'Filter:',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButton<String>(
-                    value: _selectedFilter,
-                    isExpanded: true,
-                    items: _filterOptions.map((option) {
-                      return DropdownMenuItem(
-                        value: option,
-                        child: Text(
-                          option,
-                          style: GoogleFonts.montserrat(),
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          _selectedFilter = value;
-                        });
-                      }
-                    },
-                  ),
-                ),
+                Icon(Icons.people_outline, size: 64, color: Colors.grey[300]),
+                const SizedBox(height: 16),
+                Text('No residents found', style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600])),
               ],
             ),
           ),
-          // Transactions list
+        ],
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: list.length,
+      itemBuilder: (_, index) {
+        final r = list[index];
+        return _buildResidentCard(r);
+      },
+    );
+  }
+
+  Widget _buildResidentCard(_ResidentPaymentStatus r) {
+    final hasUnpaid = r.pendingCount > 0;
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: hasUnpaid ? Colors.orange.shade100 : Colors.green.shade100,
+          child: Icon(
+            hasUnpaid ? Icons.pending_actions : Icons.check_circle,
+            color: hasUnpaid ? Colors.orange.shade700 : Colors.green.shade700,
+          ),
+        ),
+        title: Text(
+          'Unit ${r.unitNumber}',
+          style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          '${r.residentName} • ${r.role}',
+          style: GoogleFonts.montserrat(fontSize: 12, color: Colors.grey[600]),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (r.fees.isEmpty)
+              Text('No fees', style: GoogleFonts.montserrat(fontSize: 12, color: Colors.grey))
+            else ...[
+              if (r.paidCount > 0)
+                Text('${r.paidCount} paid', style: GoogleFonts.montserrat(fontSize: 12, color: Colors.green.shade700)),
+              if (r.pendingCount > 0)
+                Text('${r.pendingCount} unpaid', style: GoogleFonts.montserrat(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+            ],
+          ],
+        ),
+        children: [
+          if (r.fees.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('No payment records', style: GoogleFonts.montserrat(color: Colors.grey)),
+            )
+          else
+            ...r.fees.map((f) => _buildFeeRow(f)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeeRow(_FeeStatus f) {
+    final isPaid = f.status == 'paid';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(isPaid ? Icons.check_circle : Icons.schedule, color: isPaid ? Colors.green : Colors.orange, size: 20),
+          const SizedBox(width: 12),
           Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(f.feeTypeName, style: GoogleFonts.montserrat(fontWeight: FontWeight.w600)),
+                if (f.dueDate != null)
+                  Text('Due: ${DateFormat('yyyy-MM-dd').format(f.dueDate!)}', style: GoogleFonts.montserrat(fontSize: 12, color: Colors.grey[600])),
+              ],
+            ),
+          ),
+          Text('RM ${f.amount.toStringAsFixed(2)}', style: GoogleFonts.montserrat(fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isPaid ? Colors.green.shade50 : Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(isPaid ? 'Paid' : 'Unpaid', style: GoogleFonts.montserrat(fontSize: 12, fontWeight: FontWeight.w600, color: isPaid ? Colors.green.shade700 : Colors.orange.shade700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionsTab() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Colors.white,
+          child: Row(
+            children: [
+              Text('Filter:', style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButton<String>(
+                  value: _selectedTxFilter,
+                  isExpanded: true,
+                  items: _txFilterOptions.map((o) => DropdownMenuItem(value: o, child: Text(o, style: GoogleFonts.montserrat()))).toList(),
+                  onChanged: (v) => setState(() => _selectedTxFilter = v ?? 'All'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
             child: StreamBuilder<List<Transaction>>(
               stream: _getFilteredTransactions(),
               builder: (context, snapshot) {
@@ -399,7 +754,7 @@ class _AdminPaymentHistoryPageState extends State<AdminPaymentHistoryPage> {
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              userName,
+                                              'Unit ${userSnapshot.data?["unitNumber"] ?? "N/A"} • $userName',
                                               style: GoogleFonts.montserrat(
                                                 fontSize: 12,
                                                 color: Colors.grey[600],
@@ -515,7 +870,6 @@ class _AdminPaymentHistoryPageState extends State<AdminPaymentHistoryPage> {
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 }

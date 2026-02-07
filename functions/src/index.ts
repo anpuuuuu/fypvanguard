@@ -16,12 +16,35 @@ const db = admin.firestore();
 const messaging = admin.messaging();
 
 /**
- * 辅助函数：获取用户的 FCM Tokens
+ * 辅助函数：获取用户的 FCM Tokens（通过 account ID）
  */
 async function getUserFcmTokens(userId: string): Promise<string[]> {
   const accountDoc = await db.collection("accounts").doc(userId).get();
   const data = accountDoc.data();
   return data?.fcmTokens || [];
+}
+
+/**
+ * 辅助函数：通过 residentId 获取 FCM Tokens
+ * （accounts 中可能存 residentId 或 doc id 与 residentId 相同）
+ */
+async function getFcmTokensByResidentId(residentId: string): Promise<string[]> {
+  // 1. 先尝试直接用 residentId 作为 account doc id（owner 可能如此）
+  const directDoc = await db.collection("accounts").doc(residentId).get();
+  const directTokens = directDoc.data()?.fcmTokens || [];
+  if (directTokens.length > 0) return directTokens;
+
+  // 2. 查询 accounts 中 residentId 匹配的
+  const accountsSnapshot = await db.collection("accounts")
+    .where("residentId", "==", residentId)
+    .get();
+
+  const allTokens: string[] = [];
+  accountsSnapshot.docs.forEach((doc) => {
+    const tokens = doc.data().fcmTokens || [];
+    allTokens.push(...tokens);
+  });
+  return allTokens;
 }
 
 /**
@@ -360,7 +383,131 @@ export const onNewOwnerRegistration = onDocumentCreated(
 );
 
 // ============================================================
-// 5. 访客停车超时检查（定时任务）
+// 5. 支付通知 (Payment Notifications)
+// ============================================================
+
+/**
+ * 获取费用类型显示名称
+ */
+function getFeeTypeDisplayName(feeTypeKey: string): string {
+  const names: Record<string, string> = {
+    maintenance: "Maintenance",
+    managementFee: "Management Fee",
+    insurance: "Insurance",
+    sinking: "Sinking Fund",
+    waterBill: "Water Bill",
+    electricBill: "Electric Bill",
+    lateFee: "Late Fee",
+  };
+  return names[feeTypeKey] || feeTypeKey;
+}
+
+/**
+ * 新费用推送时通知住户
+ * 触发条件：pendingFees collection 新增文档
+ */
+export const onPendingFeeCreated = onDocumentCreated(
+  "pendingFees/{feeId}",
+  async (event) => {
+    const fee = event.data?.data();
+    if (!fee) return;
+
+    const residentId = fee.residentId as string;
+    const amount = fee.amount as number;
+    const feeTypeKey = (fee.feeType as string) || "other";
+    const dueDate = fee.dueDate?.toDate();
+    const description = (fee.description as string) || "";
+
+    const tokens = await getFcmTokensByResidentId(residentId);
+    if (tokens.length === 0) {
+      console.log(`No FCM tokens for resident ${residentId}, skipping payment notification`);
+      return;
+    }
+
+    const feeTypeName = getFeeTypeDisplayName(feeTypeKey);
+    const dueStr = dueDate
+      ? dueDate.toLocaleDateString("en-MY", { dateStyle: "medium" })
+      : "see details";
+
+    await sendNotification(
+      tokens,
+      "New Payment Due 📋",
+      `${feeTypeName}: RM ${amount.toFixed(2)} due by ${dueStr}. ${description ? description.substring(0, 50) + (description.length > 50 ? "..." : "") : ""}`,
+      { route: "/user/payment", type: "payment_due" }
+    );
+
+    console.log(`Payment notification sent to resident ${residentId} for ${feeTypeName}`);
+  }
+);
+
+/**
+ * 逾期费用检查 - 每天 9:00 运行
+ * 对已逾期的未缴纳费用发送逾期提醒
+ */
+export const checkLatePayments = onSchedule(
+  {
+    schedule: "0 9 * * *",  // 每天上午 9:00 (Asia/Kuala_Lumpur)
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const now = admin.firestore.Timestamp.now();
+
+    // 查询 status=pending 且 dueDate < now 且未发过逾期提醒
+    const lateFeesSnapshot = await db.collection("pendingFees")
+      .where("status", "==", "pending")
+      .where("dueDate", "<", now)
+      .get();
+
+    // 按 residentId 分组
+    const feesByResident = new Map<string, Array<{ doc: admin.firestore.DocumentSnapshot; data: Record<string, unknown> }>>();
+    for (const doc of lateFeesSnapshot.docs) {
+      const data = doc.data();
+      if (data.latePaymentNotified) continue;
+      const residentId = data.residentId as string;
+      if (!feesByResident.has(residentId)) {
+        feesByResident.set(residentId, []);
+      }
+      feesByResident.get(residentId)!.push({ doc, data });
+    }
+
+    let alertCount = 0;
+    for (const [residentId, fees] of feesByResident) {
+      const tokens = await getFcmTokensByResidentId(residentId);
+      if (tokens.length === 0) continue;
+
+      // 汇总所有逾期费用
+      const feeItems = fees.map(({ data }) => {
+        const feeTypeName = getFeeTypeDisplayName((data.feeType as string) || "other");
+        const amount = data.amount as number;
+        const dueDate = data.dueDate?.toDate();
+        const dueStr = dueDate ? dueDate.toLocaleDateString("en-MY", { dateStyle: "medium" }) : "past due";
+        return `${feeTypeName} RM ${amount.toFixed(2)} (due ${dueStr})`;
+      });
+      const totalAmount = fees.reduce((sum, { data }) => sum + (data.amount as number), 0);
+      const body = fees.length === 1
+        ? `Your payment is overdue! ${feeItems[0]}. Please pay as soon as possible.`
+        : `You have ${fees.length} overdue payments (RM ${totalAmount.toFixed(2)} total): ${feeItems.join("; ")}. Please pay as soon as possible.`;
+
+      await sendNotification(
+        tokens,
+        "⚠️ Late Payment Alert",
+        body,
+        { route: "/user/payment", type: "late_payment" }
+      );
+
+      // 标记所有该住户的逾期费用为已通知
+      for (const { doc } of fees) {
+        await doc.ref.update({ latePaymentNotified: true });
+      }
+      alertCount++;
+    }
+
+    console.log(`Late payment check: ${lateFeesSnapshot.size} overdue fees, ${alertCount} residents notified`);
+  }
+);
+
+// ============================================================
+// 7. 访客停车超时检查（定时任务）
 // ============================================================
 
 /**

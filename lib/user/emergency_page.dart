@@ -35,9 +35,12 @@ class _EmergencyPageState extends State<EmergencyPage> {
     {'type': 'power_outage', 'label': 'Power Outage', 'icon': Icons.power_off, 'color': Colors.grey},
   ];
 
+  String? _currentUserId;
+
   @override
   void initState() {
     super.initState();
+    _currentUserId = FirebaseAuth.instance.currentUser?.uid;
     _loadEmergencyContacts();
   }
 
@@ -334,6 +337,26 @@ class _EmergencyPageState extends State<EmergencyPage> {
                   const SizedBox(height: 32),
                   Divider(color: Colors.grey[300]),
                   const SizedBox(height: 16),
+                  // My Emergency Reports - status and guard response
+                  Text(
+                    'My Emergency Reports',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[900],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'View status and guard response for your alerts',
+                    style: GoogleFonts.montserrat(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_currentUserId != null)
+                    _MyEmergencyReportsList(residentId: _currentUserId!),
+                  const SizedBox(height: 24),
+                  Divider(color: Colors.grey[300]),
+                  const SizedBox(height: 16),
                   Text(
                     'Quick Call',
                     style: GoogleFonts.montserrat(
@@ -421,6 +444,189 @@ class _EmergencyPageState extends State<EmergencyPage> {
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
+    );
+  }
+}
+
+/// List of current resident's emergency reports with status and guard response
+class _MyEmergencyReportsList extends StatelessWidget {
+  final String residentId;
+
+  const _MyEmergencyReportsList({required this.residentId});
+
+  String _typeLabel(String type) {
+    const labels = {
+      'alert_guard': 'Alert Security',
+      'fire': 'Fire Emergency',
+      'medical': 'Medical Emergency',
+      'break_in': 'Break-in/Suspicious',
+      'flood': 'Flood/Water Leak',
+      'power_outage': 'Power Outage',
+    };
+    return labels[type] ?? type.replaceAll('_', ' ');
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'resolved': return Colors.green;
+      case 'responding': return Colors.blue;
+      case 'pending': return Colors.orange;
+      default: return Colors.grey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('emergencies')
+          .where('residentId', isEqualTo: residentId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Unable to load reports',
+              style: GoogleFonts.montserrat(color: Colors.red, fontSize: 13),
+            ),
+          );
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.history, color: Colors.grey[500], size: 24),
+                const SizedBox(width: 12),
+                Text(
+                  'No emergency reports yet',
+                  style: GoogleFonts.montserrat(color: Colors.grey[600], fontSize: 14),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final docs = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final ta = (a.data() as Map<String, dynamic>)['timestamp'];
+            final tb = (b.data() as Map<String, dynamic>)['timestamp'];
+            if (ta == null || tb == null) return 0;
+            return (tb as Timestamp).compareTo(ta as Timestamp);
+          });
+        final displayDocs = docs.take(20).toList();
+        return Column(
+          children: displayDocs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final type = data['type'] as String? ?? 'unknown';
+            final status = data['status'] as String? ?? 'pending';
+            final guardResponse = data['guardResponse'] as String?;
+            final ts = (data['timestamp'] as Timestamp?)?.toDate().toLocal();
+            final timeStr = ts == null
+                ? 'Unknown time'
+                : DateFormat('MMM d, h:mm a').format(ts);
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _statusColor(status).withOpacity(0.5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.emergency, color: _statusColor(status), size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _typeLabel(type),
+                          style: GoogleFonts.montserrat(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _statusColor(status).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          status.toUpperCase(),
+                          style: GoogleFonts.montserrat(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _statusColor(status),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    timeStr,
+                    style: GoogleFonts.montserrat(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  if (guardResponse != null && guardResponse.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.security, size: 18, color: Colors.blue.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Guard response',
+                                  style: GoogleFonts.montserrat(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue.shade800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  guardResponse,
+                                  style: GoogleFonts.montserrat(fontSize: 13, color: Colors.grey[800]),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 }

@@ -204,6 +204,12 @@ class _AdminHomeState extends State<AdminHome> {
                           GoRouter.of(context).go('/admin/maintenanceFees'),
                     ),
                     _ActionCard(
+                      icon: Icons.list_alt,
+                      label: 'Payment Types',
+                      onTap: () =>
+                          GoRouter.of(context).go('/admin/paymentTypes'),
+                    ),
+                    _ActionCard(
                       icon: Icons.history,
                       label: 'Payment History',
                       onTap: () =>
