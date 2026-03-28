@@ -1,5 +1,5 @@
 // lib/services/ocr_verification_service.dart
-// OCR 文档验证服务 - 用于验证业主上传的 Title Deed 文档
+// OCR document verification service for owner-uploaded title deed documents.
 
 import 'dart:convert';
 import 'dart:io';
@@ -8,17 +8,17 @@ import 'dart:typed_data';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// OCR 验证结果模型
+/// Model for OCR verification results.
 class OcrVerificationResult {
-  final String extractedText;         // OCR 提取的原始文字
-  final int confidenceScore;          // 总可信度分数 (0-100)
-  final bool nameMatched;             // 姓名是否匹配
-  final int nameMatchScore;           // 姓名匹配分数 (0-100)
-  final bool unitMatched;             // 单位号是否匹配
-  final int unitMatchScore;           // 单位号匹配分数 (0-100)
-  final bool documentTypeDetected;    // 是否检测到房产文件类型
-  final List<String> detectedKeywords; // 检测到的关键词
-  final String recommendation;        // 推荐操作: auto_approve / manual_review / needs_attention
+  final String extractedText; // Raw text from OCR
+  final int confidenceScore; // Overall confidence score (0-100)
+  final bool nameMatched; // Whether the name matched
+  final int nameMatchScore; // Name match score (0-100)
+  final bool unitMatched; // Whether the unit number matched
+  final int unitMatchScore; // Unit match score (0-100)
+  final bool documentTypeDetected; // Whether a property document type was detected
+  final List<String> detectedKeywords; // Keywords found in the document
+  final String recommendation; // Suggested action: auto_approve / manual_review / needs_attention
 
   OcrVerificationResult({
     required this.extractedText,
@@ -32,7 +32,7 @@ class OcrVerificationResult {
     required this.recommendation,
   });
 
-  /// 转换为 Map 用于存储到 Firestore
+  /// Serializes to a Map for Firestore.
   Map<String, dynamic> toMap() {
     return {
       'extractedText': extractedText,
@@ -47,7 +47,7 @@ class OcrVerificationResult {
     };
   }
 
-  /// 从 Firestore Map 创建实例
+  /// Builds an instance from a Firestore Map.
   factory OcrVerificationResult.fromMap(Map<String, dynamic> map) {
     return OcrVerificationResult(
       extractedText: map['extractedText'] ?? '',
@@ -63,14 +63,14 @@ class OcrVerificationResult {
   }
 }
 
-/// OCR 验证服务类
+/// Service that runs OCR and scoring for title deed verification.
 class OcrVerificationService {
-  // ML Kit 文字识别器
+  // ML Kit text recognizer
   final TextRecognizer _textRecognizer = TextRecognizer();
 
-  // 马来西亚房产文件关键词列表
+  // Keywords associated with Malaysian property documents
   static const List<String> _documentKeywords = [
-    // 英文关键词
+    // English keywords
     'title deed',
     'strata title',
     'land title',
@@ -84,13 +84,13 @@ class OcrVerificationService {
     'master title',
     'individual title',
     'geran',
-    // 马来文关键词
+    // Malay keywords
     'hakmilik',
     'petak',
     'pajakan',
     'geran mukim',
     'hak milik strata',
-    // 常见文档标识
+    // Common document markers
     'pejabat tanah',
     'land office',
     'registry',
@@ -98,46 +98,46 @@ class OcrVerificationService {
     'sale and purchase',
   ];
 
-  /// 从 Base64 图片提取文字
-  /// [base64Image] - Base64 编码的图片数据
+  /// Extracts text from a Base64-encoded image.
+  /// [base64Image] - Base64-encoded image bytes.
   Future<String> extractTextFromBase64(String base64Image) async {
     try {
-      // 解码 Base64 为字节
+      // Decode Base64 to raw bytes
       final Uint8List bytes = base64Decode(base64Image);
 
-      // 创建临时文件
+      // Write to a temporary file for ML Kit
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/ocr_temp_${DateTime.now().millisecondsSinceEpoch}.jpg');
       await tempFile.writeAsBytes(bytes);
 
-      // 使用 ML Kit 识别文字
+      // Run ML Kit text recognition
       final inputImage = InputImage.fromFile(tempFile);
       final recognizedText = await _textRecognizer.processImage(inputImage);
 
-      // 删除临时文件
+      // Remove temporary file
       await tempFile.delete();
 
       return recognizedText.text;
     } catch (e) {
-      // OCR 提取文字失败，返回空字符串
+      // OCR failed; return empty string
       return '';
     }
   }
 
-  /// 验证文档并计算可信度
-  /// [base64Image] - Base64 编码的图片
-  /// [ownerName] - 业主填写的姓名
-  /// [unitNumber] - 业主填写的单位号
+  /// Verifies the document and computes a confidence score.
+  /// [base64Image] - Base64-encoded image.
+  /// [ownerName] - Owner name as entered in the app.
+  /// [unitNumber] - Unit number as entered in the app.
   Future<OcrVerificationResult> verifyDocument({
     required String base64Image,
     required String ownerName,
     required String unitNumber,
   }) async {
-    // 1. 提取文字
+    // 1. Extract text
     final extractedText = await extractTextFromBase64(base64Image);
 
     if (extractedText.isEmpty) {
-      // OCR 失败，返回低可信度结果
+      // OCR produced no text; return a low-confidence result
       return OcrVerificationResult(
         extractedText: '',
         confidenceScore: 0,
@@ -151,31 +151,30 @@ class OcrVerificationService {
       );
     }
 
-    // 2. 检查姓名匹配
+    // 2. Name match
     final nameResult = _matchName(extractedText, ownerName);
 
-    // 3. 检查单位号匹配
+    // 3. Unit number match
     final unitResult = _matchUnit(extractedText, unitNumber);
 
-    // 4. 检测文档类型
+    // 4. Document type detection
     final docTypeResult = _detectDocumentType(extractedText);
 
-    // 5. 计算总可信度分数
-    // 权重: 姓名 40%, 单位号 40%, 文档类型 20%
+    // 5. Weighted overall score: name 40%, unit 40%, document type 20%
     final totalScore = (nameResult['score'] as int) * 0.4 +
         (unitResult['score'] as int) * 0.4 +
         (docTypeResult['score'] as int) * 0.2;
 
     final confidenceScore = totalScore.round();
 
-    // 6. 确定推荐操作
+    // 6. Map score to recommendation
     String recommendation;
     if (confidenceScore >= 80) {
-      recommendation = 'auto_approve';  // 高可信度，建议自动通过
+      recommendation = 'auto_approve'; // High confidence
     } else if (confidenceScore >= 60) {
-      recommendation = 'manual_review'; // 中可信度，需要人工审核
+      recommendation = 'manual_review'; // Medium confidence
     } else {
-      recommendation = 'needs_attention'; // 低可信度，需要重点审核
+      recommendation = 'needs_attention'; // Low confidence
     }
 
     return OcrVerificationResult(
@@ -191,23 +190,23 @@ class OcrVerificationService {
     );
   }
 
-  /// 匹配姓名
-  /// 返回 {matched: bool, score: int}
+  /// Matches owner name against OCR text.
+  /// Returns `{matched: bool, score: int}`.
   Map<String, dynamic> _matchName(String text, String name) {
     if (name.isEmpty) {
       return {'matched': false, 'score': 0};
     }
 
-    // 标准化处理
+    // Normalize whitespace and case
     final normalizedText = _normalizeText(text);
     final normalizedName = _normalizeText(name);
 
-    // 1. 完全匹配
+    // 1. Substring match
     if (normalizedText.contains(normalizedName)) {
       return {'matched': true, 'score': 100};
     }
 
-    // 2. 分词匹配 - 检查名字的每个部分是否都出现
+    // 2. Token match: each name part should appear in the text
     final nameParts = normalizedName.split(RegExp(r'\s+'));
     int matchedParts = 0;
     for (final part in nameParts) {
@@ -227,7 +226,7 @@ class OcrVerificationService {
       }
     }
 
-    // 3. 模糊匹配 - 使用相似度算法
+    // 3. Fuzzy match via similarity
     final similarity = _calculateSimilarity(normalizedName, normalizedText);
     if (similarity >= 0.7) {
       return {'matched': true, 'score': 50};
@@ -236,23 +235,23 @@ class OcrVerificationService {
     return {'matched': false, 'score': 0};
   }
 
-  /// 匹配单位号
-  /// 返回 {matched: bool, score: int}
+  /// Matches unit number against OCR text.
+  /// Returns `{matched: bool, score: int}`.
   Map<String, dynamic> _matchUnit(String text, String unit) {
     if (unit.isEmpty) {
       return {'matched': false, 'score': 0};
     }
 
-    // 标准化处理
+    // Normalize whitespace and case
     final normalizedText = _normalizeText(text);
     final normalizedUnit = _normalizeText(unit);
 
-    // 1. 完全匹配
+    // 1. Substring match
     if (normalizedText.contains(normalizedUnit)) {
       return {'matched': true, 'score': 100};
     }
 
-    // 2. 去除分隔符后匹配 (如 A-12-05 -> a1205)
+    // 2. Match after stripping separators (e.g. A-12-05 -> a1205)
     final cleanUnit = normalizedUnit.replaceAll(RegExp(r'[-_\s./]'), '');
     final cleanText = normalizedText.replaceAll(RegExp(r'[-_\s./]'), '');
 
@@ -260,7 +259,7 @@ class OcrVerificationService {
       return {'matched': true, 'score': 90};
     }
 
-    // 3. 提取单位号的数字部分进行匹配
+    // 3. Compare digit runs from the unit string
     final unitNumbers = RegExp(r'\d+').allMatches(normalizedUnit).map((m) => m.group(0)!).toList();
     if (unitNumbers.isNotEmpty) {
       int matchedNumbers = 0;
@@ -280,8 +279,8 @@ class OcrVerificationService {
     return {'matched': false, 'score': 0};
   }
 
-  /// 检测文档类型
-  /// 返回 {detected: bool, score: int, keywords: List<String>}
+  /// Detects property-related document type from keywords.
+  /// Returns `{detected: bool, score: int, keywords: List<String>}`.
   Map<String, dynamic> _detectDocumentType(String text) {
     final normalizedText = _normalizeText(text);
     final List<String> foundKeywords = [];
@@ -303,7 +302,7 @@ class OcrVerificationService {
     return {'detected': false, 'score': 0, 'keywords': <String>[]};
   }
 
-  /// 标准化文本 - 转小写，移除多余空格
+  /// Lowercases and collapses whitespace.
   String _normalizeText(String text) {
     return text
         .toLowerCase()
@@ -311,16 +310,15 @@ class OcrVerificationService {
         .trim();
   }
 
-  /// 计算两个字符串的相似度 (简化的 Levenshtein 距离)
-  /// 返回 0.0 - 1.0 之间的相似度
+  /// Simple similarity in [0.0, 1.0] using character-set overlap.
   double _calculateSimilarity(String s1, String s2) {
     if (s1.isEmpty || s2.isEmpty) return 0.0;
     if (s1 == s2) return 1.0;
 
-    // 检查 s1 是否是 s2 的子串
+    // Treat substring presence as high similarity
     if (s2.contains(s1)) return 0.9;
 
-    // 简化版: 计算公共字符比例
+    // Ratio of shared distinct characters
     final set1 = s1.split('').toSet();
     final set2 = s2.split('').toSet();
     final intersection = set1.intersection(set2);
@@ -329,7 +327,7 @@ class OcrVerificationService {
     return intersection.length / union.length;
   }
 
-  /// 释放资源
+  /// Releases ML Kit resources.
   void dispose() {
     _textRecognizer.close();
   }
