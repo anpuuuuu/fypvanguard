@@ -1,5 +1,5 @@
 // lib/user/face_registration_page.dart
-// 住户人脸录入页面 - 优化版 (Standardized with Reference Logic)
+// Resident face enrolment (liveness steps + embedding upload).
 
 import 'dart:io';
 import 'dart:async';
@@ -18,11 +18,11 @@ import '../services/ml_service.dart';
 import '../utils/image_utils.dart';
 
 enum RegStep {
-  checkPosition, // 1. 对准并保持 (抓拍最佳底图)
-  blink,         // 2. 眨眼 (活体验证)
-  smile,         // 3. 微笑 (活体验证)
-  processing,    // 4. 处理中
-  completed      // 5. 完成
+  checkPosition, // 1. Align and hold (neutral capture)
+  blink,         // 2. Blink (liveness)
+  smile,         // 3. Smile (liveness)
+  processing,    // 4. Processing
+  completed      // 5. Done
 }
 
 class FaceRegistrationPage extends StatefulWidget {
@@ -40,7 +40,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
   bool _isCameraInitialized = false;
   bool _isDetecting = false; 
   
-  // 流程状态
+  // Wizard step
   RegStep _currentStep = RegStep.checkPosition;
   String _instruction = 'Hold still for 2 seconds';
   Color _statusColor = Colors.white;
@@ -51,7 +51,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
   static const int _smileHoldMs = 1000;    
   double _holdProgress = 0.0; 
   
-  // 关键：缓存的最佳人脸图 (平静状态) + 对应的人脸数据
+  // Captured neutral / liveness samples: image + ML Kit Face
   // CameraImage? _bestImage; // Deprecated
   // Face? _bestFace; // Deprecated
   final List<Map<String, dynamic>> _capturedSamples = []; // Stores { 'image': imglib.Image, 'face': Face }

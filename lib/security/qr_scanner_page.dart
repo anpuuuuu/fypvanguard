@@ -1,5 +1,5 @@
 // lib/security/qr_scanner_page.dart
-// 安保 QR 码扫描页面
+// Security: scan visitor QR passes.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -28,7 +28,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
   bool _torchEnabled = false;
   bool _hasPermission = true;
   String? _errorMessage;
-  bool _showManualInput = false; // 开发模式：手动输入 QR 码
+  bool _showManualInput = false; // Dev: manual QR string input
 
   @override
   void initState() {
@@ -38,8 +38,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
 
   Future<void> _checkCameraPermission() async {
     try {
-      // mobile_scanner 会自动处理权限请求
-      // 但我们可以检查控制器状态
+      // mobile_scanner requests permission; start() reflects availability
       await _controller.start();
       if (mounted) {
         setState(() {
@@ -96,7 +95,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
     final vehiclePlate = visitorData['vehiclePlate'] as String?;
     final residentId = visitorData['residentId'] as String? ?? '';
     
-    // 获取住户信息
+    // Load host resident for display
     String residentInfo = 'Loading...';
     try {
       final residentDoc = await FirebaseFirestore.instance
@@ -113,7 +112,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
       residentInfo = 'Unknown';
     }
     
-    // 判断下一步操作
+    // Next action from current visitor status
     String actionText;
     String actionDescription;
     Color actionColor;
@@ -182,7 +181,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 访客信息卡片
+              // Visitor summary card
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -193,7 +192,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 访客名称
+                    // Visitor name
                     Text(
                       visitorName,
                       style: GoogleFonts.montserrat(
@@ -203,7 +202,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
                     ),
                     const SizedBox(height: 12),
                     
-                    // 入场类型
+                    // Entry type
                     _buildInfoRow(
                       Icons.directions_walk,
                       'Type',
@@ -211,17 +210,17 @@ class _QrScannerPageState extends State<QrScannerPage> {
                       entryType == 'walk-in' ? Colors.blue : Colors.orange,
                     ),
                     
-                    // 电话
+                    // Phone
                     _buildInfoRow(Icons.phone, 'Phone', phoneNumber, Colors.grey),
                     
-                    // 车牌（如果有）
+                    // Vehicle plate (if any)
                     if (vehiclePlate != null && vehiclePlate.isNotEmpty)
                       _buildInfoRow(Icons.directions_car, 'Plate', vehiclePlate, Colors.red),
                     
-                    // 住户
+                    // Host resident
                     _buildInfoRow(Icons.home, 'Resident', residentInfo, Colors.purple),
                     
-                    // 当前状态
+                    // Current status
                     _buildInfoRow(
                       Icons.info_outline,
                       'Status',
@@ -234,7 +233,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               
               const SizedBox(height: 16),
               
-              // 停车规则提示（仅 car）
+              // Parking note (car entry only)
               if (entryType == 'car' && currentStatus == 'approved')
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -343,7 +342,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
     );
   }
 
-  /// 开发模式：手动输入 QR 码（用于模拟器测试）
+  /// Dev only: paste QR string (e.g. emulator without camera).
   void _showManualInputDialog() {
     final textController = TextEditingController();
     
@@ -426,7 +425,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 如果没有权限，显示错误界面
+    // No camera permission: error UI
     if (!_hasPermission) {
       return Scaffold(
         backgroundColor: Colors.grey[100],
@@ -486,7 +485,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
                   onPressed: () async {
-                    // 尝试重新启动相机
+                    // Retry camera / permission
                     await _checkCameraPermission();
                   },
                 ),
@@ -520,7 +519,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
           onPressed: () => GoRouter.of(context).go('/security'),
         ),
         actions: [
-          // 闪光灯开关
+          // Torch
           IconButton(
             icon: Icon(_torchEnabled ? Icons.flash_on : Icons.flash_off),
             onPressed: () {
@@ -528,7 +527,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               setState(() => _torchEnabled = !_torchEnabled);
             },
           ),
-          // 切换摄像头
+          // Switch camera
           IconButton(
             icon: const Icon(Icons.cameraswitch),
             onPressed: () => _controller.switchCamera(),
@@ -537,13 +536,13 @@ class _QrScannerPageState extends State<QrScannerPage> {
       ),
       body: Stack(
         children: [
-          // 相机预览
+          // Camera preview
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
           ),
           
-          // 扫描框覆盖层
+          // Scan frame overlay
           Center(
             child: Container(
               width: 280,
@@ -554,7 +553,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               ),
               child: Stack(
                 children: [
-                  // 四角装饰
+                  // Corner accents
                   Positioned(top: -2, left: -2, child: _buildCorner(true, true)),
                   Positioned(top: -2, right: -2, child: _buildCorner(true, false)),
                   Positioned(bottom: -2, left: -2, child: _buildCorner(false, true)),
@@ -564,7 +563,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
             ),
           ),
           
-          // 处理中指示器
+          // Processing overlay
           if (_isProcessing)
             Container(
               color: Colors.black54,
@@ -573,7 +572,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               ),
             ),
           
-          // 底部提示和手动输入按钮（开发模式）
+          // Hint + manual input (dev)
           Positioned(
             bottom: 48,
             left: 0,
@@ -595,7 +594,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // 开发模式：手动输入 QR 码（用于模拟器测试）
+                // Dev: manual QR input
                 TextButton.icon(
                   icon: const Icon(Icons.keyboard, color: Colors.white70),
                   label: Text(
@@ -613,7 +612,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
         ],
       ),
       
-      // 底部导航
+      // Bottom navigation
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 1,
         selectedItemColor: Colors.red.shade700,
@@ -627,7 +626,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               GoRouter.of(context).go('/security');
               break;
             case 1:
-              // 当前页面
+              // Already on scan tab
               break;
             case 2:
               GoRouter.of(context).go('/security/visitorTracking');

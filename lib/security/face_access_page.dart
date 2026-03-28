@@ -1,5 +1,5 @@
 // lib/security/face_access_page.dart
-// 保安端：人脸识别门禁系统 (Refactored to match Reference Logic)
+// Security: face-based access (live match vs enrolled embeddings).
 
 import 'dart:async';
 import 'dart:io'; 
@@ -57,7 +57,7 @@ class _FaceAccessPageState extends State<FaceAccessPage> {
   // Anti-spoofing / Stability
   int _consecutiveMatches = 0;
   String? _lastMatchedUid;
-  // 增加连续匹配帧数，牺牲一点速度换取极高的准确率和防抖动
+  // Require consecutive matching frames to reduce flicker / false accepts
   static const int _requiredConsecutiveMatches = 2; 
 
   @override
@@ -398,10 +398,10 @@ class FacePainter extends CustomPainter {
       final double right = rect.right * scaleX;
       final double bottom = rect.bottom * scaleY;
       
-      // 1. 计算映射后的矩形
+      // 1. Map image coordinates to widget space
       final mappedRect = Rect.fromLTRB(left, top, right, bottom);
       
-      // 2. 强制转为正方形 (取长宽最大值)
+      // 2. Use square box (max of width/height)
       final double size = math.max(mappedRect.width, mappedRect.height);
       final double centerX = mappedRect.center.dx;
       final double centerY = mappedRect.center.dy;
@@ -412,7 +412,7 @@ class FacePainter extends CustomPainter {
         height: size,
       );
 
-      // 3. 画圆角正方形 (更美观)
+      // 3. Rounded rect overlay
       canvas.drawRRect(
         RRect.fromRectAndRadius(squareRect, const Radius.circular(12)),
         paint,

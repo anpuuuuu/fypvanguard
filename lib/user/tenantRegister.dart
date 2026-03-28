@@ -26,9 +26,9 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
   bool _isLoading    = false;
   String? _contactError;
 
-  // ===== 租约相关字段 =====
+  // ===== Lease-related state =====
   DateTime _leaseStartDate = DateTime.now();
-  int _selectedLeaseMonths = 12; // 默认 12 个月
+  int _selectedLeaseMonths = 12; // Default: 12 months
   final List<int> _leaseOptions = [6, 12, 24];
   bool _useCustomMonths = false;
   final _customMonthsCtrl = TextEditingController();
@@ -50,7 +50,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
     _unitCtrl.text = unit;
   }
 
-  /// 计算租约结束日期
+  /// Lease end date derived from start date and selected duration.
   DateTime get _leaseEndDate {
     return DateTime(
       _leaseStartDate.year,
@@ -59,7 +59,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
     );
   }
 
-  /// 选择开始日期
+  /// Shows date picker for lease start date.
   Future<void> _pickStartDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -104,7 +104,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
       setState(() => _contactError = null);
     }
 
-    // 处理自定义月数
+    // Validate and apply custom lease length (months)
     if (_useCustomMonths) {
       final customMonths = int.tryParse(_customMonthsCtrl.text.trim());
       if (customMonths == null || customMonths < 1 || customMonths > 60) {
@@ -134,7 +134,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
       );
       final tenantId = cred.user!.uid;
 
-      // 4️⃣ 解析月租（可选）
+      // 4️⃣ Parse optional monthly rent
       double? monthlyRent;
       if (rentText.isNotEmpty) {
         monthlyRent = double.tryParse(rentText);
@@ -150,7 +150,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
         'unitNumber': unit,
         'ownerId': FirebaseAuth.instance.currentUser!.uid,
         'createdAt': FieldValue.serverTimestamp(),
-        // ===== 租约信息 =====
+        // ===== Lease fields =====
         'leaseStartDate': Timestamp.fromDate(_leaseStartDate),
         'leaseEndDate': Timestamp.fromDate(_leaseEndDate),
         'leaseMonths': _selectedLeaseMonths,
@@ -232,7 +232,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ===== 基本信息卡片 =====
+              // ===== Tenant details card =====
               Card(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -296,7 +296,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
 
               const SizedBox(height: 16),
 
-              // ===== 租约信息卡片 =====
+              // ===== Lease period card =====
               Card(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -322,7 +322,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 开始日期选择
+                      // Lease start date
                       Text(
                         'Start Date',
                         style: GoogleFonts.montserrat(
@@ -362,7 +362,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
 
                       const SizedBox(height: 20),
 
-                      // 租期选择
+                      // Lease duration presets
                       Text(
                         'Lease Duration',
                         style: GoogleFonts.montserrat(
@@ -408,7 +408,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
                         ],
                       ),
 
-                      // 自定义月数输入
+                      // Custom duration (months)
                       if (_useCustomMonths) ...[
                         const SizedBox(height: 12),
                         SizedBox(
@@ -443,7 +443,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
 
                       const SizedBox(height: 20),
 
-                      // 结束日期显示
+                      // Computed lease end date
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -482,7 +482,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
 
                       const SizedBox(height: 20),
 
-                      // 月租金（可选）
+                      // Optional monthly rent
                       TextField(
                         controller: _rentCtrl,
                         decoration: _inputDecoration(
@@ -501,7 +501,7 @@ class _TenantRegisterPageState extends State<TenantRegisterPage> {
 
               const SizedBox(height: 24),
 
-              // Submit 按钮
+              // Submit button
               SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
